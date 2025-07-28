@@ -66,25 +66,38 @@
     end
     
     @testset "Density Extraction" begin
-        # Skip this test entirely as it requires proper PyObject structure
-        # and is tested implicitly in integration tests
-        @test true  # Placeholder to show test suite is complete
+        # Create mock mean-field object
+        mf = Dict()
+        mf_e = Dict()
+        mf_e["make_rdm1"] = () -> diagm([2.0, 2.0, 0.0, 0.0])
+        mf["components"] = Dict("e" => mf_e)
+        
+        # Test electron density extraction
+        rho_e = SparseQEEcNEO.EPCFunctionals.get_electron_density(mf)
+        
+        @test length(rho_e) == 4
+        @test rho_e[1] ≈ 2.0
+        @test rho_e[2] ≈ 2.0
+        @test rho_e[3] ≈ 0.0
     end
     
     @testset "EPC Functional Integration" begin
-        # Test that calculate_epc_energy handles all functional types gracefully
+        # Test that calculate_epc_energy handles all functional types
         mf = Dict()
-        mol_neo = Molecule("H2", "sto-3g", quantum_nuc=[0])
+        mol_neo = Molecule("H2", "sto-3g")
+        
+        # Mock densities
+        SparseQEEcNEO.EPCFunctionals.get_electron_density = mf -> ones(10)
+        SparseQEEcNEO.EPCFunctionals.get_proton_density = (mf, mol) -> ones(10)
         
         for epc_type in ["none", "17-1", "17-2", "18-1", "18-2"]
-            # Without proper mf structure, it should handle gracefully
             energy = SparseQEEcNEO.EPCFunctionals.calculate_epc_energy(mf, mol_neo, epc_type)
             
             if epc_type == "none"
                 @test energy ≈ 0.0
             else
-                # Without proper densities, it returns 0
-                @test energy ≈ 0.0
+                @test energy != 0.0
+                @test isfinite(energy)
             end
         end
     end

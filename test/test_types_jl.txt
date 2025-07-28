@@ -1,0 +1,70 @@
+@testset "Type System Tests" begin
+    @testset "Molecule Construction" begin
+        # Test basic construction
+        mol = Molecule("H 0 0 0; H 0 0 0.74", "sto-3g")
+        @test mol.atom_string == "H 0 0 0; H 0 0 0.74"
+        @test mol.basis == "sto-3g"
+        @test mol.charge == 0
+        @test mol.spin == 0
+        @test isempty(mol.quantum_nuc)
+        
+        # Test with quantum nuclei
+        mol_neo = Molecule("H 0 0 0; H 0 0 0.74", "6-31g", quantum_nuc=[0])
+        @test mol_neo.quantum_nuc == [0]
+        @test mol_neo.nuc_basis == "pb4d"
+        
+        # Test charged system
+        mol_charged = Molecule("He 0 0 0; H 0 0 1.4", "sto-3g", charge=1, quantum_nuc=[1])
+        @test mol_charged.charge == 1
+        @test mol_charged.quantum_nuc == [1]
+    end
+    
+    @testset "NEOCalculation Parameters" begin
+        # Default construction
+        calc = NEOCalculation()
+        @test calc.xc == "HF"
+        @test calc.epc == "none"
+        @test calc.conv_tol == 1e-8
+        
+        # Custom parameters
+        calc_dft = NEOCalculation(xc="B3LYP", epc="17-2", conv_tol=1e-10)
+        @test calc_dft.xc == "B3LYP"
+        @test calc_dft.epc == "17-2"
+        @test calc_dft.conv_tol == 1e-10
+    end
+    
+    @testset "ConfigSelection" begin
+        config_sel = ConfigSelection()
+        @test config_sel.method == "mp2"
+        @test config_sel.max_configs == 1000
+        @test config_sel.use_neo_importance == true
+        
+        # Test method-specific parameters
+        config_neo = ConfigSelection(method="neo_cneo", max_nuc_orbs=5)
+        @test config_neo.method == "neo_cneo"
+        @test config_neo.max_nuc_orbs == 5
+    end
+    
+    @testset "Configuration Types" begin
+        # Test Configuration
+        occ = Dict("e" => Int16[1, 1, 0, 0])
+        config = Configuration("HF", occ, 1.0)
+        @test config.name == "HF"
+        @test config.weight == 1.0
+        @test length(config.occupations["e"]) == 4
+        
+        # Test CompressedConfig
+        comp = CompressedConfig("S(1→3)", Int16[1, 2], Float32[1.0, 1.0], Float32(0.5))
+        @test comp.name == "S(1→3)"
+        @test comp.weight ≈ 0.5
+        @test length(comp.occ_indices) == 2
+    end
+    
+    @testset "EPC Parameters" begin
+        @test haskey(EPC_PARAMS, "17-1")
+        @test haskey(EPC_PARAMS, "17-2")
+        @test EPC_PARAMS["17-2"]["a"] ≈ 0.760
+        @test EPC_PARAMS["17-2"]["b"] ≈ 0.103
+        @test EPC_PARAMS["17-2"]["c"] ≈ 0.0533
+    end
+end

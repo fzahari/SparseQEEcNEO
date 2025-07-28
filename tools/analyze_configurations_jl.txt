@@ -1,0 +1,129 @@
+"""
+analyze_configurations.jl - Analyze configuration space
+"""
+
+include("../src/SparseQEEcNEO.jl")
+using .SparseQEEcNEO
+using Statistics
+
+function analyze_configuration_space(configs)
+    # Count types
+    types = Dict{String, Int}()
+    
+    for config in configs
+        type_key = get_config_type(config)
+        types[type_key] = get(types, type_key, 0) + 1
+    end
+    
+    # Weight distribution
+    weights = [get_weight(config) for config in configs]
+    
+    println("\nConfiguration Space Analysis")
+    println("="^50)
+    println("Total configurations: $(length(configs))")
+    println("\nConfiguration types:")
+    for (type, count) in sort(collect(types), by=x->x[2], rev=true)
+        println("  $type: $count ($(round(count/length(configs)*100, digits=1))%)")
+    end
+    
+    println("\nWeight statistics:")
+    println("  Max weight: $(maximum(weights))")
+    println("  Min weight: $(minimum(weights))")
+    println("  Mean weight: $(mean(weights))")
+    println("  Median weight: $(median(weights))")
+    
+    # Cumulative importance
+    sorted_weights = sort(weights, rev=true)
+    cumsum_weights = cumsum(sorted_weights) / sum(sorted_weights)
+    
+    n_50 = findfirst(x -> x >= 0.5, cumsum_weights)
+    n_90 = findfirst(x -> x >= 0.9, cumsum_weights)
+    n_99 = findfirst(x -> x >= 0.99, cumsum_weights)
+    
+    println("\nCumulative importance:")
+    println("  50% from top $n_50 configs")
+    println("  90% from top $n_90 configs")
+    println("  99% from top $n_99 configs")
+    
+    return types, weights
+end
+
+function get_config_type(config)
+    name = get_config_name(config)
+    
+    if occursin("HF", name) || occursin("REF", name)
+        return "Reference"
+    elseif occursin("C(", name)
+        return "Coupled"
+    elseif match(r"N\d+\(", name) !== nothing
+        return "Nuclear"
+    elseif occursin("S(", name) || occursin("E(", name)
+        return "Single"
+    elseif occursin("D(", name)
+        return "Double"
+    else
+        return "Other"
+    end
+end
+
+function get_config_name(config)
+    if isa(config, Configuration)
+        return config.name
+    elseif isa(config, CompressedConfig)
+        return config.name
+    else
+        return "Unknown"
+    end
+end
+
+function get_weight(config)
+    if isa(config, Configuration)
+        return config.weight
+    elseif isa(config, CompressedConfig)
+        return Float64(config.weight)
+    else
+        return 0.0
+    end
+end
+
+function plot_weight_distribution(weights)
+    using Plots
+    
+    p1 = histogram(weights, 
+                  bins=50,
+                  xlabel="Weight",
+                  ylabel="Count",
+                  title="Weight Distribution",
+                  label="Configurations")
+    
+    p2 = plot(1:length(weights),
+             sort(weights, rev=true),
+             xlabel="Configuration Rank",
+             ylabel="Weight",
+             title="Weight Decay",
+             yscale=:log10,
+             label="Weight",
+             marker=:circle,
+             markersize=2)
+    
+    return plot(p1, p2, layout=(1,2), size=(800, 400))
+end
+
+# Example usage
+if abspath(PROGRAM_FILE) == @__FILE__
+    if length(ARGS) > 0
+        # Load configurations from a results file
+        ham_data, _ = load_hamiltonian(ARGS[1])
+        configs = ham_data.configs
+        
+        types, weights = analyze_configuration_space(configs)
+        
+        # Create visualization
+        p = plot_weight_distribution(weights)
+        savefig(p, "configuration_analysis.png")
+        
+        println("\nVisualization saved to configuration_analysis.png")
+    else
+        println("Usage: julia analyze_configurations.jl <hamiltonian.h5>")
+    end
+end

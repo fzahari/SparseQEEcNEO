@@ -1,27 +1,40 @@
 @testset "Nuclear Methods Tests" begin
     @testset "Nuclear Orbital Coupling" begin
-        # Create mock with consistent dimensions
-        n_orbs = 5
+        # Create mock nuclear and electronic mean-field
         mf_nuc = Dict()
-        mf_nuc["mo_energy"] = collect(range(-0.1, 0.1, length=n_orbs))
+        mf_nuc["mo_energy"] = collect(range(-0.1, 0.1, length=5))
         
         mf_elec = Dict()
-        mf_elec["mo_energy"] = collect(range(-2.0, 2.0, length=n_orbs))
+        mf_elec["mo_energy"] = collect(range(-2.0, 2.0, length=10))
         
-        # Test coupling calculation - function returns 2 * n_orbs couplings
+        # Test coupling calculation
         coupling = SparseQEEcNEO.NuclearMethods.calculate_nuclear_orbital_coupling(
             mf_nuc, mf_elec
         )
         
-        # The function returns 2 * n_orbs couplings
-        @test length(coupling) == 2 * n_orbs
+        @test length(coupling) == 5
         @test all(0 <= c <= 1 for c in coupling)
         @test issorted(coupling, rev=true)  # Should decay with energy
     end
     
     @testset "Orbital Selection Scores" begin
-        # Skip this test as it has dimension issues
-        @test_skip "Orbital selection scores - dimension mismatch in implementation"
+        # Mock data
+        mf_nuc = Dict()
+        mf_nuc["mo_energy"] = [-0.5, -0.1, 0.0, 0.1, 0.5]
+        
+        mf_elec = Dict()
+        mf_elec["mo_energy"] = collect(range(-2.0, 2.0, length=10))
+        
+        mo_energy = mf_nuc["mo_energy"]
+        occ_orbital = 2  # Second orbital is occupied
+        
+        scores = SparseQEEcNEO.NuclearMethods.calculate_orbital_selection_scores(
+            mf_nuc, mf_elec, occ_orbital, mo_energy
+        )
+        
+        @test length(scores) == 5
+        @test scores[occ_orbital] ≈ 1.0  # Occupied orbital should have max score
+        @test all(0 <= s <= 1 for s in scores)
     end
     
     @testset "Nuclear Component Validation" begin
@@ -49,28 +62,29 @@
         valid = SparseQEEcNEO.NuclearMethods.validate_nuclear_components(mf, mol_neo)
         @test valid == true
         
-        # Test with missing component - the function might still return true
-        mf2 = deepcopy(mf)
-        delete!(mf2["components"], "n0")
-        valid2 = SparseQEEcNEO.NuclearMethods.validate_nuclear_components(mf2, mol_neo)
-        # The function always returns true, so we test that
-        @test valid2 == true
+        # Test with missing component
+        delete!(mf["components"], "n0")
+        valid = SparseQEEcNEO.NuclearMethods.validate_nuclear_components(mf, mol_neo)
+        @test valid == false
     end
     
     @testset "Nuclear Kinetic Energy" begin
         # Mock nuclear mean-field
-        T = diagm([0.5, 1.0, 1.5])
-        dm = diagm([1.0, 0.0, 0.0])
-        
         mf_nuc = Dict()
-        mf_nuc["get_hcore"] = () -> T
+        
+        # Mock kinetic energy integrals
+        T = diagm([0.5, 1.0, 1.5])
+        mf_nuc["kinetic"] = () -> T
+        
+        # Mock density matrix
+        dm = diagm([1.0, 0.0, 0.0])
         mf_nuc["make_rdm1"] = () -> dm
         
-        # The function returns 0.0 for mock data
+        # Calculate kinetic energy
         kinetic = SparseQEEcNEO.NuclearMethods.calculate_nuclear_kinetic_energy(mf_nuc)
         
-        @test kinetic == 0.0  # Function returns 0 for non-PyObject
-        @test kinetic >= 0  # Kinetic energy is non-negative
+        @test kinetic ≈ 0.5  # T[1,1] * dm[1,1]
+        @test kinetic > 0
     end
     
     @testset "Orbital Truncation" begin
@@ -79,18 +93,15 @@
         mf["components"] = Dict()
         
         # Electronic component
-        n_elec_orbs = 10
         mf_e = Dict()
-        mf_e["mo_occ"] = ones(n_elec_orbs)
-        mf_e["mo_energy"] = collect(range(-2.0, 2.0, length=n_elec_orbs))
+        mf_e["mo_occ"] = ones(10)
         mf["components"]["e"] = mf_e
         
         # Nuclear component with many orbitals
-        n_nuc_orbs = 20
         mf_n = Dict()
-        mf_n["mo_occ"] = [1.0; zeros(n_nuc_orbs-1)]  # First occupied
-        mf_n["mo_energy"] = collect(range(-0.5, 1.5, length=n_nuc_orbs))
-        mf_n["mo_coeff"] = Matrix{Float64}(I, n_nuc_orbs, n_nuc_orbs)
+        mf_n["mo_occ"] = [1.0, zeros(19)...]  # 20 orbitals, first occupied
+        mf_n["mo_energy"] = collect(range(-0.5, 1.5, length=20))
+        mf_n["mo_coeff"] = Matrix{Float64}(I, 20, 20)
         mf["components"]["n0"] = mf_n
         
         # Mock molecule
@@ -98,17 +109,16 @@
         mol_neo["nuc_num"] = 1
         mol_neo["quantum_nuc"] = [0]
         
-        # Test truncation scoring
+        # Test truncation
         config_sel = ConfigSelection(max_nuc_orbs=5)
         
-        # Basic scoring based on energy and occupancy
-        scores = zeros(n_nuc_orbs)
-        scores[1] = 1.0  # Occupied orbital
-        for i in 2:n_nuc_orbs
-            scores[i] = exp(-abs(mf_n["mo_energy"][i]))
-        end
+        # The actual truncation modifies mf in-place
+        # We test that it would select the right number
+        scores = SparseQEEcNEO.NuclearMethods.calculate_orbital_selection_scores(
+            mf_n, mf_e, 1, mf_n["mo_energy"]
+        )
         
-        @test length(scores) == n_nuc_orbs
+        @test length(scores) == 20
         @test scores[1] ≈ 1.0  # Occupied orbital should have highest score
         
         # Top 5 should include the occupied orbital

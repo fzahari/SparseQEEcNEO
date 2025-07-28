@@ -70,27 +70,24 @@
         
         entanglement = SparseQEEcNEO.QEEMethods.analyze_entanglement_structure(configs)
         
-        # The actual implementation optimizes the orbital mapping
-        @test entanglement.n_active_orbitals > 0
-        @test entanglement.total_connections >= 0
-        @test 0 <= entanglement.connectivity_fraction
-        @test size(entanglement.connectivity_matrix, 1) == entanglement.n_active_orbitals
+        @test entanglement.n_active_orbitals == 4
+        @test entanglement.total_connections > 0
+        @test 0 <= entanglement.connectivity_fraction <= 1
+        @test size(entanglement.connectivity_matrix, 1) == 4
     end
     
     @testset "Quantum Advantage Estimation" begin
-        # Small system
+        # Small system - no advantage
         advantage_small = SparseQEEcNEO.QEEMethods.estimate_quantum_advantage(10, 4)
         
         @test advantage_small.classical_operations > 0
         @test advantage_small.quantum_operations > 0
         @test advantage_small.classical_memory_gb > 0
         
-        # Large system  
+        # Large system - potential advantage
         advantage_large = SparseQEEcNEO.QEEMethods.estimate_quantum_advantage(1000, 20)
         
-        # Both should have positive values
-        @test advantage_large.classical_operations > 0
-        @test advantage_large.quantum_operations > 0
+        @test advantage_large.advantage_ratio > advantage_small.advantage_ratio
         @test advantage_large.classical_memory_gb > advantage_small.classical_memory_gb
     end
     

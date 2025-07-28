@@ -1,0 +1,54 @@
+@testset "Integration Tests" begin
+    # Only run if PySCF is available
+    config = NEOConfig()
+    pyscf, has_neo = SparseQEEcNEO.setup_pyscf(config)
+    
+    if has_neo
+        @testset "Full H2 Calculation" begin
+            mol = Molecule("H 0 0 0; H 0 0 0.74", "sto-3g")
+            calc = NEOCalculation(xc="HF")
+            config_sel = ConfigSelection(method="mp2", max_configs=10)
+            
+            results = sparse_qee_cneo(mol, calc=calc, config_sel=config_sel)
+            
+            @test results.n_configs > 0
+            @test results.n_configs <= 10
+            @test results.energy < 0
+            @test results.n_qubits > 0
+            @test 0 < results.captured_importance <= 1.0
+            @test results.hamiltonian_matrix !== nothing
+            @test ishermitian(results.hamiltonian_matrix)
+        end
+        
+        @testset "NEO Water Calculation" begin
+            mol = Molecule("O 0 0 0; H 0.757 0.586 0; H -0.757 0.586 0", 
+                          "sto-3g", quantum_nuc=[1])
+            calc = NEOCalculation(xc="B3LYP", epc="17-2")
+            config_sel = ConfigSelection(method="neo_cneo", max_configs=50)
+            
+            results = sparse_qee_cneo(mol, calc=calc, config_sel=config_sel)
+            
+            @test results.n_configs > 0
+            @test results.neo_metrics !== nothing
+            @test results.neo_metrics.nuclear_participation > 0
+        end
+        
+        @testset "Method Comparison" begin
+            mol = Molecule("H 0 0 0; H 0 0 0.74", "sto-3g", quantum_nuc=[0])
+            methods = ["mp2", "neo_cneo"]
+            
+            energies = Dict{String, Float64}()
+            for method in methods
+                config_sel = ConfigSelection(method=method, max_configs=20)
+                results = sparse_qee_cneo(mol, config_sel=config_sel)
+                energies[method] = results.total_energy
+            end
+            
+            # Energies should be similar but not identical
+            @test abs(energies["mp2"] - energies["neo_cneo"]) < 0.1
+            @test abs(energies["mp2"] - energies["neo_cneo"]) > 1e-6
+        end
+    else
+        @test_skip "PySCF NEO not available"
+    end
+end

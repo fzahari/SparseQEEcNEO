@@ -6,6 +6,7 @@
         
         if pyscf !== nothing
             @test pyscf !== nothing
+            # Don't fail if NEO not available, just warn
             if !has_neo
                 @test_skip "NEO module not available"
             else
@@ -19,19 +20,18 @@
     # Only run remaining tests if PySCF is available
     pyscf, has_neo = SparseQEEcNEO.PySCFInterface.setup_pyscf(config)
     
-    if pyscf !== nothing && has_neo
+    if has_neo
         @testset "NEO Molecule Building" begin
             mol = Molecule("H 0 0 0; H 0 0 0.74", "sto-3g", quantum_nuc=[0])
             mol_neo = SparseQEEcNEO.PySCFInterface.build_neo_molecule(mol, pyscf)
             
             @test pybuiltin("hasattr")(mol_neo, "nuc_num")
             @test mol_neo.nuc_num == 1
-            # The quantum_nuc attribute might be internal, just check it built successfully
-            @test mol_neo !== nothing
+            @test pybuiltin("hasattr")(mol_neo, "quantum_nuc")
         end
         
         @testset "Mean-field Calculation" begin
-            mol = Molecule("H 0 0 0; H 0 0 0.74", "sto-3g", quantum_nuc=[0])
+            mol = Molecule("H 0 0 0; H 0 0 0.74", "sto-3g")
             mol_neo = SparseQEEcNEO.PySCFInterface.build_neo_molecule(mol, pyscf)
             
             calc = NEOCalculation(xc="HF")
@@ -55,20 +55,18 @@
         end
         
         @testset "MP2 Calculation" begin
-            mol = Molecule("H 0 0 0; H 0 0 0.74", "sto-3g", quantum_nuc=[0])
+            mol = Molecule("H 0 0 0; H 0 0 0.74", "sto-3g")
             mol_neo = SparseQEEcNEO.PySCFInterface.build_neo_molecule(mol, pyscf)
             
             calc = NEOCalculation(xc="HF")
             mf = SparseQEEcNEO.PySCFInterface.run_neo_meanfield(mol_neo, calc, pyscf)
             
-            # NEO-MP2 might not work with truncation, so we expect nothing or valid result
             mp, ecorr, t2 = SparseQEEcNEO.PySCFInterface.run_neo_mp2(mf, mol_neo)
             
-            if ecorr !== nothing
-                @test ecorr <= 0  # Correlation energy should be negative or zero
-            end
+            @test ecorr < 0  # Correlation energy should be negative
+            @test t2 !== nothing
         end
     else
-        @test_skip "All PySCF interface tests - PySCF/NEO not available"
+        @test_skip "All PySCF interface tests - NEO not available"
     end
 end

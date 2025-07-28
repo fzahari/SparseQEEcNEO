@@ -1,5 +1,3 @@
-# test/runtests.jl - Complete test suite for SparseQEEcNEO
-
 using Test
 using LinearAlgebra
 using Random
@@ -9,8 +7,8 @@ using PyCall
 ENV["PYTHONPATH"] = get(ENV, "PYSCF_PATH", "/Users/federicozahariev/Work/Programs/QEE_Split_Grouping/pyscf-master")
 
 # Include the module
-include("../src/SparseQEEcNEO.jl")
-using .SparseQEEcNEO
+push!(LOAD_PATH, dirname(@__DIR__))
+using SparseQEEcNEO
 
 # Set random seed for reproducibility
 Random.seed!(42)
@@ -27,6 +25,11 @@ catch
     (false, false)
 end
 
+println("Running SparseQEEcNEO Test Suite")
+println("PySCF available: $PYSCF_AVAILABLE")
+println("NEO available: $NEO_AVAILABLE")
+println("="^60)
+
 @testset "SparseQEEcNEO.jl Complete Test Suite" begin
     include("test_types.jl")
     include("test_epc_functionals.jl")
@@ -36,12 +39,14 @@ end
     include("test_qee_methods.jl")
     include("test_nuclear_methods.jl")
     
-    if PYSCF_AVAILABLE
+    if PYSCF_AVAILABLE != false && NEO_AVAILABLE
         include("test_pyscf_interface.jl")
         include("test_integration.jl")
     else
-        @warn "Skipping PySCF-dependent tests - PySCF not available"
+        @warn "Skipping PySCF-dependent tests - PySCF/NEO not available"
     end
     
     include("test_performance.jl")
 end
+
+println("\nTest suite completed!")

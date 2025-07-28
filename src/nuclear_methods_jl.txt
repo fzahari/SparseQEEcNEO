@@ -1,0 +1,378 @@
+"""
+nuclear_methods.jl - Methods for nuclear orbital handling and truncation
+"""
+module NuclearMethods
+
+using PyCall
+using LinearAlgebra
+using ..Types
+
+export truncate_nuclear_orbitals, calculate_nuclear_orbital_coupling
+export debug_nuclear_components, validate_nuclear_components
+
+# ======================== Nuclear Orbital Truncation ========================
+
+function truncate_nuclear_orbitals(mf, mol_neo, config_sel::ConfigSelection)
+    """
+    Truncate nuclear orbitals based on energy and coupling strength
+    
+    Selection criteria:
+    - 60% weight on energy proximity to occupied orbital
+    - 40% weight on coupling strength to electronic orbitals
+    """
+    if !pybuiltin("hasattr")(mol_neo, "nuc_num") || mol_neo.nuc_num == 0
+        return mf, false
+    end
+    
+    truncated = false
+    
+    # Use the actual quantum_nuc indices from mol_neo
+    if pybuiltin("hasattr")(mol_neo, "quantum_nuc")
+        quantum_nuc_indices = mol_neo.quantum_nuc
+    else
+        # Fallback if quantum_nuc is not stored
+        quantum_nuc_indices = collect(0:(mol_neo.nuc_num-1))
+    end
+    
+    for (idx, nuc_idx) in enumerate(quantum_nuc_indices)
+        nuc_key = "n$nuc_idx"
+        
+        if !haskey(mf.components, nuc_key)
+            @warn "Nuclear component $nuc_key not found"
+            continue
+        end
+        
+        mf_nuc = mf.components[nuc_key]
+        
+        # Check if truncation is needed
+        if !pybuiltin("hasattr")(mf_nuc, "mo_energy")
+            continue
+        end
+        
+        mo_energy = collect(mf_nuc.mo_energy)
+        mo_occ = collect(mf_nuc.mo_occ)
+        n_orbs = length(mo_energy)
+        
+        if n_orbs <= config_sel.max_nuc_orbs
+            @info "Nuclear component $nuc_key: $n_orbs orbitals (no truncation needed)"
+            continue
+        end
+        
+        # Find occupied orbital
+        occ_orbital = findfirst(mo_occ .> 0.5)
+        if occ_orbital === nothing
+            occ_orbital = 1
+        end
+        
+        # Calculate selection scores
+        scores = calculate_orbital_selection_scores(
+            mf_nuc, mf.components["e"], occ_orbital, mo_energy
+        )
+        
+        # Select top orbitals
+        selected_indices = partialsortperm(scores, 1:config_sel.max_nuc_orbs, rev=true)
+        
+        # Apply truncation
+        apply_orbital_truncation!(mf_nuc, selected_indices)
+        
+        # Report truncation
+        @info "Nuclear orbital selection for nucleus $idx (index $nuc_idx):" *
+              "\n  Selected $(length(selected_indices)) out of $n_orbs orbitals" *
+              "\n  Energy range: $(minimum(mo_energy[selected_indices])) to $(maximum(mo_energy[selected_indices]))" *
+              "\n  Occupied orbital kept: $(occ_orbital in selected_indices)"
+        
+        truncated = true
+    end
+    
+    if truncated
+        @info "Nuclear orbital truncation applied"
+    end
+    
+    return mf, truncated
+end
+
+function calculate_orbital_selection_scores(mf_nuc, mf_elec, occ_orbital, mo_energy)
+    """
+    Calculate selection scores for nuclear orbitals
+    """
+    n_orbs = length(mo_energy)
+    
+    # Energy-based scores (60% weight)
+    ref_energy = mo_energy[occ_orbital]
+    energy_diffs = abs.(mo_energy .- ref_energy)
+    energy_scores = 1.0 ./ (1.0 .+ energy_diffs)
+    
+    # Coupling-based scores (40% weight)
+    coupling_scores = calculate_nuclear_orbital_coupling(mf_nuc, mf_elec)
+    
+    # Ensure occupied orbital has highest score
+    energy_scores[occ_orbital] = 1.0
+    coupling_scores[occ_orbital] = 1.0
+    
+    # Combined scores
+    total_scores = 0.6 * energy_scores + 0.4 * coupling_scores
+    
+    return total_scores
+end
+
+function apply_orbital_truncation!(mf_nuc, selected_indices)
+    """
+    Apply truncation to nuclear orbital coefficients
+    """
+    # Sort indices to maintain order
+    selected_indices = sort(selected_indices)
+    
+    # Truncate orbital properties
+    if pybuiltin("hasattr")(mf_nuc, "mo_coeff")
+        mf_nuc.mo_coeff = mf_nuc.mo_coeff[:, selected_indices]
+    end
+    
+    if pybuiltin("hasattr")(mf_nuc, "mo_energy")
+        mf_nuc.mo_energy = mf_nuc.mo_energy[selected_indices]
+    end
+    
+    if pybuiltin("hasattr")(mf_nuc, "mo_occ")
+        mf_nuc.mo_occ = mf_nuc.mo_occ[selected_indices]
+    end
+end
+
+function apply_nuclear_orbital_truncation!(mf, mol_neo, config_sel::ConfigSelection)
+    """
+    Apply nuclear orbital truncation to mean-field object (in-place modification)
+    Returns: (truncated, truncation_info)
+    """
+    truncated = false
+    truncation_info = Dict{String, Any}()
+    
+    if !haskey(mf, "components")
+        return truncated, truncation_info
+    end
+    
+    components = mf.components
+    
+    # Handle each quantum nucleus
+    for i in 1:mol_neo.nuc_num
+        nuc_idx = mol_neo.quantum_nuc[i]
+        nuc_key = "n$nuc_idx"
+        
+        if haskey(components, nuc_key)
+            mf_nuc = components[nuc_key]
+            
+            if pyhasattr(mf_nuc, "mo_occ") && pyhasattr(mf_nuc, "mo_coeff")
+                mo_occ = convert(Vector{Float64}, mf_nuc.mo_occ)
+                mo_coeff = convert(Matrix{Float64}, mf_nuc.mo_coeff)
+                mo_energy = convert(Vector{Float64}, mf_nuc.mo_energy)
+                
+                n_orb_total = length(mo_occ)
+                
+                if n_orb_total > config_sel.max_nuc_orbs
+                    # Select orbitals
+                    selected_indices, _, _ = select_nuclear_orbitals(
+                        mf_nuc, 
+                        components["e"], 
+                        config_sel.max_nuc_orbs, 
+                        i
+                    )
+                    
+                    # Store truncation info
+                    truncation_info[nuc_key] = Dict(
+                        "original_norb" => n_orb_total,
+                        "truncated_norb" => length(selected_indices),
+                        "selected_indices" => selected_indices
+                    )
+                    
+                    # Apply truncation - create new arrays
+                    new_mo_occ = mo_occ[selected_indices]
+                    new_mo_coeff = mo_coeff[:, selected_indices]
+                    new_mo_energy = mo_energy[selected_indices]
+                    
+                    # Update the mean-field object
+                    mf_nuc.mo_occ = PyReverseDims(new_mo_occ)
+                    mf_nuc.mo_coeff = PyReverseDims(new_mo_coeff)
+                    mf_nuc.mo_energy = PyReverseDims(new_mo_energy)
+                    
+                    truncated = true
+                    
+                    @info "Truncated nuclear component $nuc_key: $n_orb_total → $(length(selected_indices)) orbitals"
+                end
+            end
+        end
+    end
+    
+    return truncated, truncation_info
+end
+
+# ======================== Nuclear-Electronic Coupling ========================
+
+function calculate_nuclear_orbital_coupling(mf_nuc, mf_elec)
+    """
+    Calculate coupling strength between nuclear and electronic orbitals
+    """
+    # Get dimensions
+    n_nuc_orbs = pybuiltin("hasattr")(mf_nuc, "mo_energy") ? 
+                 length(mf_nuc.mo_energy) : 10
+    
+    # Simple model: uniform coupling
+    coupling_scores = ones(n_nuc_orbs) * 0.5
+    
+    # Enhance coupling for low-energy orbitals
+    if pybuiltin("hasattr")(mf_nuc, "mo_energy")
+        energies = collect(mf_nuc.mo_energy)
+        min_energy = minimum(energies)
+        
+        for i in 1:n_nuc_orbs
+            # Lower energy orbitals have stronger coupling
+            coupling_scores[i] = exp(-(energies[i] - min_energy))
+        end
+    end
+    
+    return coupling_scores
+end
+
+# ======================== Nuclear Component Debugging ========================
+
+function debug_nuclear_components(mf, mol_neo, config_sel::ConfigSelection)
+    """
+    Comprehensive debugging of nuclear components
+    """
+    if !config_sel.debug_nuclear
+        return
+    end
+    
+    println("\n" * "="^60)
+    println("Nuclear Component Debugging")
+    println("="^60)
+    
+    if !pybuiltin("hasattr")(mol_neo, "nuc_num")
+        println("No quantum nuclei in molecule")
+        return
+    end
+    
+    println("Number of quantum nuclei: $(mol_neo.nuc_num)")
+    
+    # Check each nuclear component
+    for i in 1:mol_neo.nuc_num
+        nuc_key = "n$(i-1)"
+        println("\nNuclear component $nuc_key:")
+        
+        if !haskey(mf.components, nuc_key)
+            println("  ❌ Component not found!")
+            continue
+        end
+        
+        mf_nuc = mf.components[nuc_key]
+        println("  ✓ Component found")
+        
+        # Check available attributes
+        check_nuclear_attributes(mf_nuc, nuc_key)
+    end
+    
+    println("="^60)
+end
+
+function check_nuclear_attributes(mf_nuc, nuc_key)
+    """
+    Check and report nuclear component attributes
+    """
+    # Essential attributes
+    essential_attrs = ["mo_occ", "mo_energy", "mo_coeff", "make_rdm1"]
+    
+    for attr in essential_attrs
+        if pybuiltin("hasattr")(mf_nuc, attr)
+            println("  ✓ Has $attr")
+            
+            # Show details for some attributes
+            if attr == "mo_occ"
+                mo_occ = collect(mf_nuc.mo_occ)
+                occ_indices = findall(mo_occ .> 0.5)
+                println("    Occupied orbitals: $occ_indices")
+                println("    Occupations: $(mo_occ[occ_indices])")
+            elseif attr == "mo_energy"
+                mo_energy = collect(mf_nuc.mo_energy)
+                println("    Energy range: $(minimum(mo_energy)) to $(maximum(mo_energy))")
+                println("    First 5 energies: $(mo_energy[1:min(5,end)])")
+            elseif attr == "mo_coeff"
+                mo_coeff = mf_nuc.mo_coeff
+                if pybuiltin("hasattr")(mo_coeff, "shape")
+                    shape = mo_coeff.shape
+                    println("    Shape: $shape")
+                end
+            end
+        else
+            println("  ❌ Missing $attr")
+        end
+    end
+end
+
+# ======================== Validation Functions ========================
+
+function validate_nuclear_components(mf, mol_neo)
+    """
+    Validate nuclear components are properly initialized
+    """
+    if !pybuiltin("hasattr")(mol_neo, "nuc_num") || mol_neo.nuc_num == 0
+        return true  # No nuclear components to validate
+    end
+    
+    valid = true
+    
+    for i in 1:mol_neo.nuc_num
+        nuc_key = "n$(i-1)"
+        
+        if !haskey(mf.components, nuc_key)
+            @error "Nuclear component $nuc_key missing!"
+            valid = false
+            continue
+        end
+        
+        mf_nuc = mf.components[nuc_key]
+        
+        # Check essential properties
+        if !pybuiltin("hasattr")(mf_nuc, "mo_occ")
+            @error "Nuclear component $nuc_key missing mo_occ!"
+            valid = false
+        end
+        
+        if !pybuiltin("hasattr")(mf_nuc, "mo_energy")
+            @error "Nuclear component $nuc_key missing mo_energy!"
+            valid = false
+        end
+    end
+    
+    return valid
+end
+
+# ======================== Advanced Nuclear Methods ========================
+
+function calculate_nuclear_kinetic_energy(mf_nuc)
+    """
+    Calculate kinetic energy of quantum nuclei
+    """
+    if !pybuiltin("hasattr")(mf_nuc, "kinetic") || !pybuiltin("hasattr")(mf_nuc, "make_rdm1")
+        return 0.0
+    end
+    
+    try
+        T = mf_nuc.kinetic()  # Kinetic energy integrals
+        dm = mf_nuc.make_rdm1()  # Density matrix
+        
+        # Trace of T * DM gives kinetic energy
+        kinetic = real(tr(T * dm))
+        
+        return kinetic
+    catch e
+        @warn "Could not calculate nuclear kinetic energy: $e"
+        return 0.0
+    end
+end
+
+function optimize_nuclear_basis(mol_neo, target_accuracy=1e-6)
+    """
+    Optimize nuclear basis set for given accuracy
+    Placeholder for future development
+    """
+    @warn "Nuclear basis optimization not yet implemented"
+    return mol_neo.nuc_basis
+end
+
+end # module

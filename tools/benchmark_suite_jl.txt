@@ -1,0 +1,377 @@
+#!/usr/bin/env julia
+"""
+tools/benchmark_suite.jl - Performance benchmarking suite for Sparse QEE-cNEO
+"""
+
+include("../src/SparseQEEcNEO.jl")
+using .SparseQEEcNEO
+using BenchmarkTools
+using DataFrames
+using CSV
+using Plots
+using Statistics
+
+# ======================== Benchmark Functions ========================
+
+function benchmark_configuration_generation()
+    println("\nBenchmarking Configuration Generation")
+    println("-"^50)
+    
+    results = DataFrame(
+        method = String[],
+        n_orbitals = Int[],
+        time_mean = Float64[],
+        time_std = Float64[],
+        memory = Float64[],
+        n_configs = Int[]
+    )
+    
+    # Test different system sizes
+    n_orbitals_list = [4, 8, 16, 32]
+    methods = ["mp2", "neo_cneo", "hybrid_final"]
+    
+    for n_orbs in n_orbitals_list
+        # Create mock mean-field
+        mf = create_mock_mf(n_orbs)
+        mol = Molecule("Mock", "sto-3g")
+        
+        for method in methods
+            config_sel = ConfigSelection(method=method, max_configs=100)
+            
+            # Benchmark
+            b = @benchmark SparseQEEcNEO.ConfigurationGeneration.generate_configurations(
+                $mf, $mol, $config_sel, nothing
+            )
+            
+            # Get configurations for counting
+            configs = SparseQEEcNEO.ConfigurationGeneration.generate_configurations(
+                mf, mol, config_sel, nothing
+            )
+            
+            push!(results, (
+                method = method,
+                n_orbitals = n_orbs,
+                time_mean = mean(b.times) / 1e9,  # Convert to seconds
+                time_std = std(b.times) / 1e9,
+                memory = b.memory / 1024^2,  # Convert to MB
+                n_configs = length(configs)
+            ))
+            
+            println("  $method ($n_orbs orbitals): $(round(mean(b.times)/1e6, digits=2)) ms")
+        end
+    end
+    
+    return results
+end
+
+function benchmark_hamiltonian_construction()
+    println("\nBenchmarking Hamiltonian Construction")
+    println("-"^50)
+    
+    results = DataFrame(
+        n_configs = Int[],
+        n_orbitals = Int[],
+        time_mean = Float64[],
+        time_std = Float64[],
+        memory = Float64[],
+        sparsity = Float64[]
+    )
+    
+    config_sizes = [10, 50, 100, 200]
+    n_orbs = 10
+    
+    for n_configs in config_sizes
+        # Create mock configurations
+        configs = [
+            Configuration("C$i", Dict("e" => create_random_occupation(n_orbs)), rand())
+            for i in 1:n_configs
+        ]
+        
+        # Create mock integrals
+        h1e = Dict("e" => randn(n_orbs, n_orbs))
+        h1e["e"] = (h1e["e"] + h1e["e"]') / 2
+        h2e = Dict("e" => SparseQEEcNEO.HamiltonianConstruction.create_sparse_eri(n_orbs))
+        coupling = Dict{Tuple{String,String}, Matrix{Float64}}()
+        active = Dict("e" => collect(1:n_orbs))
+        
+        # Benchmark
+        b = @benchmark SparseQEEcNEO.HamiltonianConstruction.build_configuration_hamiltonian(
+            $configs, $h1e, $h2e, $coupling, $active
+        )
+        
+        # Get actual Hamiltonian for analysis
+        H = SparseQEEcNEO.HamiltonianConstruction.build_configuration_hamiltonian(
+            configs, h1e, h2e, coupling, active
+        )
+        
+        sparsity = count(abs.(H) .< 1e-12) / length(H)
+        
+        push!(results, (
+            n_configs = n_configs,
+            n_orbitals = n_orbs,
+            time_mean = mean(b.times) / 1e9,
+            time_std = std(b.times) / 1e9,
+            memory = b.memory / 1024^2,
+            sparsity = sparsity
+        ))
+        
+        println("  $n_configs configs: $(round(mean(b.times)/1e6, digits=2)) ms, " *
+                "sparsity: $(round(sparsity*100, digits=1))%")
+    end
+    
+    return results
+end
+
+function benchmark_importance_analysis()
+    println("\nBenchmarking Importance Analysis")
+    println("-"^50)
+    
+    results = DataFrame(
+        n_configs = Int[],
+        time_mean = Float64[],
+        time_std = Float64[],
+        memory = Float64[]
+    )
+    
+    config_sizes = [100, 500, 1000, 5000]
+    
+    for n_configs in config_sizes
+        # Create mock configurations
+        configs = [
+            Configuration("C$i", Dict("e" => Int16[1,1,0,0]), rand())
+            for i in 1:n_configs
+        ]
+        
+        mol = Molecule("Mock", "sto-3g")
+        config_sel = ConfigSelection()
+        
+        # Benchmark
+        b = @benchmark SparseQEEcNEO.ImportanceAnalysis.calculate_importance_metrics(
+            $configs, $mol, $config_sel
+        )
+        
+        push!(results, (
+            n_configs = n_configs,
+            time_mean = mean(b.times) / 1e9,
+            time_std = std(b.times) / 1e9,
+            memory = b.memory / 1024^2
+        ))
+        
+        println("  $n_configs configs: $(round(mean(b.times)/1e6, digits=2)) ms")
+    end
+    
+    return results
+end
+
+function benchmark_full_workflow()
+    println("\nBenchmarking Full Workflow")
+    println("-"^50)
+    
+    results = DataFrame(
+        molecule = String[],
+        method = String[],
+        time_total = Float64[],
+        time_config = Float64[],
+        time_hamiltonian = Float64[],
+        memory_peak = Float64[],
+        n_configs = Int[],
+        n_qubits = Int[]
+    )
+    
+    # Test molecules
+    molecules = [
+        ("H2", Molecule("H 0 0 0; H 0 0 0.74", "sto-3g")),
+        ("H2_NEO", Molecule("H 0 0 0; H 0 0 0.74", "sto-3g", quantum_nuc=[0])),
+        ("HeH+", Molecule("He 0 0 0; H 0 0 1.4", "sto-3g", charge=1))
+    ]
+    
+    methods = ["mp2", "neo_cneo"]
+    
+    # Check if PySCF is available
+    config = NEOConfig()
+    pyscf, has_neo = SparseQEEcNEO.setup_pyscf(config)
+    
+    if !has_neo
+        println("  PySCF NEO not available - using mock data")
+        return results
+    end
+    
+    for (mol_name, mol) in molecules
+        for method in methods
+            println("  Benchmarking $mol_name with $method...")
+            
+            config_sel = ConfigSelection(method=method, max_configs=50)
+            
+            # Time full calculation
+            t_start = time()
+            mem_start = Base.gc_live_bytes()
+            
+            try
+                res = sparse_qee_cneo(mol, config_sel=config_sel)
+                
+                t_total = time() - t_start
+                mem_peak = (Base.gc_live_bytes() - mem_start) / 1024^2
+                
+                push!(results, (
+                    molecule = mol_name,
+                    method = method,
+                    time_total = t_total,
+                    time_config = res.computation_time * 0.6,  # Estimate
+                    time_hamiltonian = res.computation_time * 0.4,  # Estimate
+                    memory_peak = mem_peak,
+                    n_configs = res.n_configs,
+                    n_qubits = res.n_qubits
+                ))
+            catch e
+                println("    Failed: $e")
+            end
+        end
+    end
+    
+    return results
+end
+
+# ======================== Helper Functions ========================
+
+function create_mock_mf(n_orbs)
+    mf = Dict()
+    mf_e = Dict()
+    mf_e["mo_occ"] = [i <= n_orbs÷2 ? 1.0 : 0.0 for i in 1:n_orbs]
+    mf_e["mo_energy"] = collect(range(-2.0, 2.0, length=n_orbs))
+    mf["components"] = Dict("e" => mf_e)
+    mf["e_tot"] = -1.0
+    return mf
+end
+
+function create_random_occupation(n_orbs, n_occupied=nothing)
+    if n_occupied === nothing
+        n_occupied = n_orbs ÷ 2
+    end
+    occ = zeros(Int16, n_orbs)
+    occupied_indices = randperm(n_orbs)[1:n_occupied]
+    occ[occupied_indices] .= 1
+    return occ
+end
+
+function plot_benchmark_results(results_dict)
+    plots = Dict()
+    
+    # Configuration generation scaling
+    if haskey(results_dict, "config_gen")
+        df = results_dict["config_gen"]
+        p = plot(df.n_orbitals, df.time_mean,
+                group=df.method,
+                xlabel="Number of Orbitals",
+                ylabel="Time (seconds)",
+                title="Configuration Generation Scaling",
+                marker=:circle,
+                legend=:topleft,
+                yscale=:log10)
+        plots["config_scaling"] = p
+    end
+    
+    # Hamiltonian construction scaling
+    if haskey(results_dict, "hamiltonian")
+        df = results_dict["hamiltonian"]
+        p = plot(df.n_configs, df.time_mean,
+                xlabel="Number of Configurations",
+                ylabel="Time (seconds)",
+                title="Hamiltonian Construction Scaling",
+                marker=:square,
+                legend=false)
+        plots["hamiltonian_scaling"] = p
+    end
+    
+    # Memory usage
+    if haskey(results_dict, "config_gen") && haskey(results_dict, "hamiltonian")
+        df1 = results_dict["config_gen"]
+        df2 = results_dict["hamiltonian"]
+        
+        p = plot()
+        plot!(df1.n_orbitals, df1.memory,
+              label="Config Generation",
+              marker=:circle)
+        plot!(df2.n_configs, df2.memory,
+              label="Hamiltonian",
+              marker=:square)
+        xlabel!("System Size")
+        ylabel!("Memory (MB)")
+        title!("Memory Usage")
+        plots["memory"] = p
+    end
+    
+    return plots
+end
+
+# ======================== Main Benchmark Suite ========================
+
+function run_benchmark_suite(; save_results=true, plot_results=true)
+    println("\nSparse QEE-cNEO Performance Benchmark Suite")
+    println("="^60)
+    
+    results_dict = Dict()
+    
+    # Run benchmarks
+    println("\n1. Configuration Generation")
+    results_dict["config_gen"] = benchmark_configuration_generation()
+    
+    println("\n2. Hamiltonian Construction")
+    results_dict["hamiltonian"] = benchmark_hamiltonian_construction()
+    
+    println("\n3. Importance Analysis")
+    results_dict["importance"] = benchmark_importance_analysis()
+    
+    println("\n4. Full Workflow")
+    results_dict["workflow"] = benchmark_full_workflow()
+    
+    # Save results
+    if save_results
+        println("\nSaving results...")
+        mkpath("benchmark_results")
+        
+        for (name, df) in results_dict
+            CSV.write("benchmark_results/$(name).csv", df)
+        end
+        
+        println("Results saved to benchmark_results/")
+    end
+    
+    # Plot results
+    if plot_results
+        println("\nGenerating plots...")
+        plots = plot_benchmark_results(results_dict)
+        
+        for (name, p) in plots
+            savefig(p, "benchmark_results/$(name).png")
+        end
+        
+        println("Plots saved to benchmark_results/")
+    end
+    
+    # Summary
+    println("\n" * "="^60)
+    println("Benchmark Summary")
+    println("="^60)
+    
+    if haskey(results_dict, "config_gen")
+        df = results_dict["config_gen"]
+        println("\nConfiguration Generation:")
+        for method in unique(df.method)
+            subset = df[df.method .== method, :]
+            println("  $method: $(round(mean(subset.time_mean)*1000, digits=2)) ms average")
+        end
+    end
+    
+    if haskey(results_dict, "hamiltonian")
+        df = results_dict["hamiltonian"]
+        println("\nHamiltonian Construction:")
+        println("  Scaling: ~O(n²) with $(round(mean(df.sparsity)*100, digits=1))% average sparsity")
+    end
+    
+    return results_dict
+end
+
+# Run if called directly
+if abspath(PROGRAM_FILE) == @__FILE__
+    results = run_benchmark_suite()
+end

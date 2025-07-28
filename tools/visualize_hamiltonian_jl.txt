@@ -1,0 +1,98 @@
+"""
+visualize_hamiltonian.jl - Visualize Hamiltonian structure
+"""
+
+using Plots
+using LinearAlgebra
+using HDF5
+
+include("../src/SparseQEEcNEO.jl")
+using .SparseQEEcNEO
+
+function visualize_hamiltonian(H::Matrix; title="Hamiltonian Matrix")
+    # Create heatmap
+    p = heatmap(
+        abs.(H),
+        color = :viridis,
+        title = title,
+        xlabel = "Configuration Index",
+        ylabel = "Configuration Index",
+        aspect_ratio = :equal,
+        colorbar_title = "|H_ij|"
+    )
+    
+    return p
+end
+
+function plot_eigenvalue_spectrum(H::Matrix; n_states=20)
+    # Calculate eigenvalues
+    eigenvals = eigvals(Hermitian(H))
+    
+    # Plot spectrum
+    p = scatter(
+        1:min(n_states, length(eigenvals)),
+        eigenvals[1:min(n_states, length(eigenvals))],
+        title = "Eigenvalue Spectrum",
+        xlabel = "State Index",
+        ylabel = "Energy (Ha)",
+        markersize = 6,
+        label = "Eigenvalues"
+    )
+    
+    # Add ground state line
+    hline!([eigenvals[1]], label = "Ground State", linestyle = :dash)
+    
+    return p
+end
+
+function analyze_sparsity_pattern(H::Matrix; threshold=1e-10)
+    # Create binary sparsity pattern
+    sparse_pattern = abs.(H) .> threshold
+    
+    # Calculate statistics
+    n_nonzero = sum(sparse_pattern)
+    sparsity = 1 - n_nonzero / length(H)
+    
+    # Plot pattern
+    p = heatmap(
+        sparse_pattern,
+        color = [:white, :black],
+        title = "Sparsity Pattern ($(round(sparsity*100, digits=1))% sparse)",
+        xlabel = "Configuration Index",
+        ylabel = "Configuration Index",
+        aspect_ratio = :equal,
+        colorbar = false
+    )
+    
+    return p, sparsity
+end
+
+# Example usage
+if abspath(PROGRAM_FILE) == @__FILE__
+    # Load a Hamiltonian
+    if length(ARGS) > 0
+        filename = ARGS[1]
+        ham_data, H = load_hamiltonian(filename)
+        
+        # Create visualizations
+        p1 = visualize_hamiltonian(H)
+        p2 = plot_eigenvalue_spectrum(H)
+        p3, sparsity = analyze_sparsity_pattern(H)
+        
+        # Create combined plot
+        p_combined = plot(p1, p2, p3, layout=(1,3), size=(1200, 400))
+        
+        # Save plots
+        savefig(p1, "hamiltonian_heatmap.png")
+        savefig(p2, "eigenvalue_spectrum.png")
+        savefig(p3, "sparsity_pattern.png")
+        savefig(p_combined, "hamiltonian_analysis.png")
+        
+        println("Visualizations saved!")
+        println("Hamiltonian size: $(size(H))")
+        println("Sparsity: $(round(sparsity*100, digits=1))%")
+        println("Ground state energy: $(eigvals(Hermitian(H))[1]) Ha")
+    else
+        println("Usage: julia visualize_hamiltonian.jl <hamiltonian.h5>")
+    end
+end

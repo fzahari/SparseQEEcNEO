@@ -1,0 +1,99 @@
+"""
+check_dependencies.jl - Check and install required dependencies
+"""
+
+using Pkg
+using PyCall
+
+function check_julia_packages()
+    required_packages = [
+        "PyCall", "LinearAlgebra", "SparseArrays", 
+        "Printf", "Statistics", "HDF5", "JSON", "Test"
+    ]
+    
+    println("Checking Julia packages...")
+    for pkg in required_packages
+        if haskey(Pkg.project().dependencies, pkg)
+            println("  ✓ $pkg")
+        else
+            println("  Installing $pkg...")
+            Pkg.add(pkg)
+        end
+    end
+end
+
+function check_python_packages()
+    println("\nChecking Python packages...")
+    
+    py"""
+    import subprocess
+    import sys
+    
+    def check_and_install(package):
+        try:
+            __import__(package)
+            return True, None
+        except ImportError as e:
+            return False, str(e)
+    
+    packages = ['numpy', 'scipy', 'h5py']
+    for pkg in packages:
+        success, error = check_and_install(pkg)
+        if success:
+            print(f"  ✓ {pkg}")
+        else:
+            print(f"  ✗ {pkg}: {error}")
+            print(f"    Install with: {sys.executable} -m pip install {pkg}")
+    """
+end
+
+function check_pyscf_neo()
+    println("\nChecking PySCF with NEO...")
+    
+    pyscf_path = get(ENV, "PYSCF_PATH", "")
+    if isempty(pyscf_path)
+        println("  ⚠ PYSCF_PATH not set")
+        println("  Set with: export PYSCF_PATH=/path/to/pyscf-master")
+        return false
+    end
+    
+    try
+        py"""
+        import sys
+        sys.path.insert(0, $pyscf_path)
+        import pyscf
+        has_neo = hasattr(pyscf, 'neo')
+        """
+        
+        has_neo = py"has_neo"
+        if has_neo
+            println("  ✓ PySCF with NEO found at $pyscf_path")
+            return true
+        else
+            println("  ⚠ PySCF found but NEO module missing")
+            println("  Install NEO-enabled PySCF from: https://github.com/corinwagen/pyscf")
+            return false
+        end
+    catch e
+        println("  ✗ Error checking PySCF: $e")
+        return false
+    end
+end
+
+# Run checks if called directly
+if abspath(PROGRAM_FILE) == @__FILE__
+    println("Sparse QEE-cNEO Dependency Check")
+    println("="^60)
+    
+    check_julia_packages()
+    check_python_packages()
+    has_neo = check_pyscf_neo()
+    
+    println("\n" * "="^60)
+    if has_neo
+        println("✓ All dependencies satisfied!")
+    else
+        println("⚠ Some dependencies missing - see above for instructions")
+    end
+    println("="^60)
+end

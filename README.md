@@ -19,8 +19,8 @@ FEATURES
 INSTALLATION
 ------------
 1. Clone repository:
-   git clone https://github.com/yourusername/SparseQEEcNEO.jl
-   cd SparseQEEcNEO.jl
+   git clone https://github.com/yourusername/SparseQEEcNEO
+   cd SparseQEEcNEO
 
 2. Install Julia dependencies:
    julia --project=.
@@ -51,7 +51,7 @@ export_hamiltonian_openfermion(results.hamiltonian_data, "h2_quantum.txt")
 
 DIRECTORY STRUCTURE
 -------------------
-SparseQEEcNEO.jl/
+SparseQEEcNEO/
 ├── Project.toml                    # Package dependencies
 ├── README.md                       # Main documentation
 ├── LICENSE
