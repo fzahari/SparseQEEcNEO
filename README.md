@@ -19,8 +19,8 @@ FEATURES
 INSTALLATION
 ------------
 1. Clone repository:
-   git clone https://github.com/yourusername/SparseQEEcNEO.jl
-   cd SparseQEEcNEO.jl
+   git clone https://github.com/fzahari/SparseQEEcNEO
+   cd SparseQEEcNEO
 
 2. Install Julia dependencies:
    julia --project=.
