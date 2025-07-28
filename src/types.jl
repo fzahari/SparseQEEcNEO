@@ -1,0 +1,214 @@
+"""
+types.jl - Type definitions for Sparse QEE-cNEO
+Version 6.0 - Complete with Hamiltonian support
+"""
+module Types
+
+export NEOConfig, Molecule, NEOCalculation, ConfigSelection
+export Configuration, CompressedConfig, NEOResults
+export EPC_PARAMS
+
+# ======================== Configuration Types ========================
+
+"""
+Configuration for PySCF NEO setup
+"""
+struct NEOConfig
+    pyscf_path::String
+    python_exec::String
+    use_threading::Bool
+    n_threads::Int
+    
+    function NEOConfig(;
+        pyscf_path::String = get(ENV, "PYSCF_PATH", "/path/to/pyscf-master"),
+        python_exec::String = "python",
+        use_threading::Bool = true,
+        n_threads::Int = Threads.nthreads()
+    )
+        new(pyscf_path, python_exec, use_threading, n_threads)
+    end
+end
+
+# ======================== Molecular System Types ========================
+
+"""
+Molecule definition with quantum nuclei specification
+"""
+struct Molecule
+    atom_string::String
+    basis::String
+    charge::Int
+    spin::Int
+    quantum_nuc::Vector{Int}
+    nuc_basis::String
+    
+    function Molecule(
+        atom_string::String,
+        basis::String;
+        charge::Int = 0,
+        spin::Int = 0,
+        quantum_nuc::Vector{Int} = Int[],
+        nuc_basis::String = "pb4d"
+    )
+        new(atom_string, basis, charge, spin, quantum_nuc, nuc_basis)
+    end
+end
+
+# ======================== Calculation Parameters ========================
+
+"""
+NEO calculation parameters
+"""
+struct NEOCalculation
+    xc::String              # Exchange-correlation functional
+    epc::String             # Electron-proton correlation functional
+    conv_tol::Float64       # SCF convergence tolerance
+    max_cycle::Int          # Maximum SCF cycles
+    
+    function NEOCalculation(;
+        xc::String = "HF",
+        epc::String = "none",
+        conv_tol::Float64 = 1e-8,
+        max_cycle::Int = 100
+    )
+        new(xc, epc, conv_tol, max_cycle)
+    end
+end
+
+# ======================== Configuration Selection ========================
+
+"""
+Configuration selection parameters
+"""
+mutable struct ConfigSelection
+    method::String                  # Selection method
+    max_configs::Int               # Maximum configurations
+    max_qubits::Int                # Maximum qubits
+    importance_cutoff::Float64     # Importance threshold
+    energy_cutoff::Float64         # Energy cutoff
+    use_compression::Bool          # Compress configurations
+    parallel_threshold::Int        # Parallel processing threshold
+    
+    # MP2-specific
+    t2_threshold::Float64          # T2 amplitude threshold
+    
+    # CASCI-specific
+    cas_threshold::Float64         # CASCI coefficient threshold
+    cas_nstates::Int              # Number of states
+    active_orbs::Int              # Active orbitals for CASCI
+    active_elec::Int              # Active electrons for CASCI
+    
+    # NEO-specific
+    max_nuc_orbs::Int             # Maximum nuclear orbitals
+    include_doubles::Bool          # Include double excitations
+    use_neo_importance::Bool       # Use NEO importance metrics
+    debug_nuclear::Bool            # Debug nuclear components
+    target_importance::Float64     # Target cumulative importance
+    
+    # Method switching
+    auto_switch_method::Bool       # Auto-switch if low importance
+    importance_threshold_switch::Float64  # Threshold to trigger switch
+    
+    # MP2 with truncation
+    force_mp2_with_truncation::Bool  # Force MP2 even with truncated orbitals
+    
+    function ConfigSelection(;
+        method::String = "mp2",
+        max_configs::Int = 1000,
+        max_qubits::Int = 100,
+        importance_cutoff::Float64 = 1e-6,
+        energy_cutoff::Float64 = 10.0,
+        use_compression::Bool = true,
+        parallel_threshold::Int = 1000,
+        t2_threshold::Float64 = 0.01,
+        cas_threshold::Float64 = 0.01,
+        cas_nstates::Int = 1,
+        active_orbs::Int = 8,
+        active_elec::Int = 4,
+        max_nuc_orbs::Int = 10,
+        include_doubles::Bool = false,
+        use_neo_importance::Bool = true,
+        debug_nuclear::Bool = false,
+        target_importance::Float64 = 0.99,
+        auto_switch_method::Bool = true,
+        importance_threshold_switch::Float64 = 0.1,
+        force_mp2_with_truncation::Bool = false
+    )
+        new(method, max_configs, max_qubits, importance_cutoff, energy_cutoff,
+            use_compression, parallel_threshold, t2_threshold, cas_threshold,
+            cas_nstates, active_orbs, active_elec, max_nuc_orbs, include_doubles, 
+            use_neo_importance, debug_nuclear, target_importance, auto_switch_method,
+            importance_threshold_switch, force_mp2_with_truncation)
+    end
+end
+
+# ======================== Configuration Storage ========================
+
+"""
+Full configuration representation
+"""
+struct Configuration
+    name::String
+    occupations::Dict{String, Vector{Int16}}  # Component -> occupation vector
+    weight::Float64
+end
+
+"""
+Compressed configuration for memory efficiency
+"""
+struct CompressedConfig
+    name::String
+    occ_indices::Vector{Int16}    # Non-zero occupation indices
+    occ_values::Vector{Float32}    # Non-zero occupation values
+    weight::Float32
+end
+
+# ======================== Results ========================
+
+"""
+Results from NEO calculation with Hamiltonian data
+"""
+mutable struct NEOResults
+    configs::Vector
+    energy::Float64
+    mp2_correlation::Float64
+    total_energy::Float64
+    n_configs::Int
+    n_qubits::Int
+    captured_importance::Float64
+    det_savings::Float64
+    qubit_savings::Int
+    computation_time::Float64
+    memory_used::Float64
+    method_used::String
+    orbitals_per_species::Vector{Int}
+    neo_metrics::Any
+    orbital_truncation::Bool
+    hamiltonian_data::Any  # HamiltonianData from HamiltonianConstruction module
+    hamiltonian_matrix::Any  # Matrix representation
+end
+
+# Constructor without Hamiltonian fields for backward compatibility
+function NEOResults(configs, energy, mp2_correlation, total_energy, n_configs, n_qubits,
+                   captured_importance, det_savings, qubit_savings, computation_time,
+                   memory_used, method_used, orbitals_per_species, neo_metrics, orbital_truncation)
+    NEOResults(configs, energy, mp2_correlation, total_energy, n_configs, n_qubits,
+              captured_importance, det_savings, qubit_savings, computation_time,
+              memory_used, method_used, orbitals_per_species, neo_metrics, orbital_truncation,
+              nothing, nothing)
+end
+
+# ======================== EPC Parameters ========================
+
+"""
+EPC functional parameters from literature
+"""
+const EPC_PARAMS = Dict(
+    "none" => Dict("a" => 0.0, "b" => 0.0, "c" => 0.0),
+    "17-1" => Dict("a" => 0.735, "b" => 0.00968, "c" => 0.000146),  # epc17 optimized for densities
+    "17-2" => Dict("a" => 0.760, "b" => 0.103, "c" => 0.0533),      # epc17 optimized for energies
+    "18-1" => Dict("a" => 1.008, "b" => 0.182, "c" => 0.0),         # epc18 optimized for densities
+    "18-2" => Dict("a" => 0.895, "b" => 0.0806, "c" => 0.0),        # epc18 optimized for energies
+)
+
+end # module

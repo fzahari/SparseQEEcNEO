@@ -1,0 +1,23 @@
+# Ignore files in root directory only
+/*.txt
+/*.jl
+/Makefile
+
+# Ignore all .h5 files everywhere
+*.h5
+
+# System files
+.DS_Store
+*.swp
+*~
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Julia temporary
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+Manifest.toml
