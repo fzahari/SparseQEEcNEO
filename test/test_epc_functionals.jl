@@ -66,9 +66,23 @@
     end
     
     @testset "Density Extraction" begin
-        # Skip this test entirely as it requires proper PyObject structure
-        # and is tested implicitly in integration tests
-        @test true  # Placeholder to show test suite is complete
+        # Test with a mock object that has the correct structure
+        # Create a mock mf that mimics PySCF structure
+        mf = Dict()
+        mf["components"] = Dict()
+        
+        # Mock electronic component
+        mf_e = Dict()
+        mf["components"]["e"] = mf_e
+        
+        # Test that function handles missing make_rdm1 gracefully
+        rho_e = SparseQEEcNEO.EPCFunctionals.get_electron_density(mf)
+        @test length(rho_e) == 0  # Should return empty array when no make_rdm1
+        
+        # Test get_proton_density
+        mol_neo = Molecule("H2", "sto-3g", quantum_nuc=[0])
+        rho_p = SparseQEEcNEO.EPCFunctionals.get_proton_density(mf, mol_neo)
+        @test length(rho_p) == 0  # Should return empty array when no proper structure
     end
     
     @testset "EPC Functional Integration" begin
