@@ -7,7 +7,7 @@ using PyCall
 using LinearAlgebra
 using Statistics 
 using ..Types
-using ..NuclearMethods
+using ..NuclearMethods  # Now available since it's loaded before this module
 using ..PySCFInterface
 
 export generate_configurations, select_important_configurations

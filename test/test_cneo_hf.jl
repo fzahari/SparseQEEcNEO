@@ -46,6 +46,12 @@ println("="^60)
     if PYSCF_AVAILABLE != false && NEO_AVAILABLE
         println("\nRunning PySCF/NEO-dependent tests...")
         include("test_pyscf_interface.jl")
+        
+        # Only run cNEO tests if NEO is available
+        if isfile("test_cneo_hf.jl")
+            include("test_cneo_hf.jl")
+        end
+        
         include("test_integration.jl")
     else
         @warn "Skipping PySCF-dependent tests - PySCF/NEO not available"
@@ -56,24 +62,3 @@ println("="^60)
 end
 
 println("\nTest suite completed!")
-
-# Run additional test files if they exist and PySCF is available
-if PYSCF_AVAILABLE != false && NEO_AVAILABLE
-    test_files = [
-        "test_cneo_hf.jl",
-        "test_cneo_mp2.jl",
-        "test_cneo_dft.jl"
-    ]
-    
-    for test_file in test_files
-        if isfile(test_file)
-            println("\nRunning additional test: $test_file")
-            try
-                include(test_file)
-                println("✓ $test_file completed")
-            catch e
-                println("✗ $test_file failed: $e")
-            end
-        end
-    end
-end
