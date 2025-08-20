@@ -14,11 +14,12 @@ using HDF5
 using JSON
 
 # Include all submodules in correct order
+# IMPORTANT: Order matters due to dependencies
 include("types.jl")
 include("pyscf_interface.jl")
 include("epc_functionals.jl")
-include("nuclear_methods.jl")
-include("configuration_generation.jl")
+include("nuclear_methods.jl")  # Must be before configuration_generation
+include("configuration_generation.jl")  # Uses NuclearMethods
 include("importance_analysis.jl")
 include("qee_methods.jl")
 include("hamiltonian_construction.jl")
@@ -47,6 +48,7 @@ export calculate_importance_metrics
 export truncate_nuclear_orbitals, apply_nuclear_orbital_truncation!
 export construct_second_quantized_hamiltonian, save_hamiltonian, load_hamiltonian
 export HamiltonianData, analyze_hamiltonian_properties
+export export_hamiltonian_openfermion
 
 # ======================== Main Interface Function ========================
 
