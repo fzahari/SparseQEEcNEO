@@ -1,3 +1,4 @@
+# src/nuclear_methods.jl - Fixed version
 """
 nuclear_methods.jl - Methods for nuclear orbital handling and truncation
 """
@@ -9,9 +10,7 @@ using ..Types
 
 export truncate_nuclear_orbitals, calculate_nuclear_orbital_coupling
 export debug_nuclear_components, validate_nuclear_components
-export apply_nuclear_orbital_truncation!  # Add this line
-
-# ... rest of the file
+export apply_nuclear_orbital_truncation!
 
 # ======================== Nuclear Orbital Truncation ========================
 
