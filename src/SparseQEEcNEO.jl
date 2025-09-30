@@ -23,6 +23,7 @@ include("configuration_generation.jl")  # Uses NuclearMethods
 include("importance_analysis.jl")
 include("qee_methods.jl")
 include("hamiltonian_construction.jl")
+# Note: cNEO modules are available as separate files but not included in main module due to dependencies
 
 # Import from submodules
 using .Types
@@ -49,6 +50,8 @@ export truncate_nuclear_orbitals, apply_nuclear_orbital_truncation!
 export construct_second_quantized_hamiltonian, save_hamiltonian, load_hamiltonian
 export HamiltonianData, analyze_hamiltonian_properties
 export export_hamiltonian_openfermion
+
+# Note: cNEO functionality available as separate modules in src/cneo_hf.jl and src/cneo_mp2.jl
 
 # ======================== Main Interface Function ========================
 

@@ -4,7 +4,7 @@ using LinearAlgebra
 using PyCall
 using ..Types
 using ..PySCFInterface
-using ..CNEOHF: solve_lagrange_multipliers!, calculate_nuclear_position  # Move this to top level
+# Note: CNEOHF functions will be imported at module level after both modules are loaded
 
 export CNEOMP2Calculation, CNEOMP2Results, run_cneo_mp2
 
