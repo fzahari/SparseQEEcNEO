@@ -14,22 +14,38 @@
 - **Export to OpenFermion format** for quantum algorithms
 - **Constrained NEO (cNEO) methods** with Lagrange multiplier constraints
 
+## Installation Requirements
+
+⚠️ **IMPORTANT**: This package requires PySCF with NEO (Nuclear-Electronic Orbital) support from the specific fork at https://github.com/theorychemyang/pyscf. Standard PySCF installations will NOT work.
+
 ## Quick Setup
 
-1. **Clone and setup environment:**
+1. **Install PySCF with NEO support (required):**
+   ```bash
+   # Clone the specific PySCF fork with NEO support
+   git clone https://github.com/theorychemyang/pyscf.git
+   cd pyscf
+   pip install -e .
+   
+   # Set environment variables
+   export PYSCF_PATH="$(pwd)"
+   export PYTHONPATH="$PYSCF_PATH:$PYTHONPATH"
+   ```
+
+2. **Clone and setup SparseQEEcNEO:**
    ```bash
    git clone https://github.com/fzahari/SparseQEEcNEO.jl.git
    cd SparseQEEcNEO
    source setup_env.sh  # Sets up PySCF paths and environment
    ```
 
-2. **Install Julia dependencies:**
+3. **Install Julia dependencies:**
    ```julia
    julia --project=.
    julia> using Pkg; Pkg.instantiate()
    ```
 
-3. **Verify setup:**
+4. **Verify setup:**
    ```bash
    julia tools/check_dependencies.jl
    ```
@@ -50,6 +66,45 @@ println("Configurations: $(results.n_configs)")
 save_hamiltonian("h2.h5", results.hamiltonian_data, results.hamiltonian_matrix)
 export_hamiltonian_openfermion(results.hamiltonian_data, "h2_quantum.txt")
 ```
+
+## Constrained NEO (cNEO) Methods
+
+The package includes integrated constrained NEO methods with position constraints on quantum nuclei:
+
+```julia
+using SparseQEEcNEO
+
+# cNEO-HF with nuclear position constraint
+mol = Molecule("H 0 0 0; H 0 0 0.74", "sto-3g", quantum_nuc=[0])
+constraint_position = [0.0, 0.0, 0.5]  # Target position for quantum proton
+
+# Create cNEO calculation
+cneo_calc = create_cneo_calculation(
+    method="HF",
+    constraint_positions=[constraint_position],
+    convergence_threshold=1e-6,
+    max_iterations=50
+)
+
+# Run cNEO-HF calculation
+cneo_results = run_cneo_hf(mol, cneo_calc)
+
+println("cNEO-HF Energy: $(cneo_results.total_energy) Ha")
+println("Constraint satisfied: $(cneo_results.converged)")
+println("Position error: $(cneo_results.position_errors[1])")
+
+# Run cNEO-MP2 with correlation
+mp2_results = run_cneo_mp2(mol, [constraint_position])
+println("cNEO-MP2 Energy: $(mp2_results.total_energy) Ha")
+```
+
+### cNEO Features
+
+- **Nuclear Position Constraints**: Enforce specific positions for quantum nuclei
+- **Lagrange Multiplier Optimization**: Newton method with analytical Hessians
+- **cNEO-HF and cNEO-MP2**: Hartree-Fock and correlation-corrected methods
+- **Clean Code Implementation**: Small, focused functions following Clean Code principles
+- **Comprehensive Error Handling**: Robust validation and convergence monitoring
 
 ## Development
 

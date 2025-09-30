@@ -320,7 +320,7 @@ function generate_configurations_mp2_enhanced(mf, mol_neo, config_sel::ConfigSel
     Generate configurations using MP2 with t2 amplitude enhancement
     """
     # Start with standard MP2 configurations
-    configs = generate_configurations_mp2(mf, mol_neo, config_sel)
+    configs = generate_configurations_mp2(mf, mol_neo, config_sel, t2_amplitudes)
     
     # Enhance weights based on t2 amplitudes if available
     if t2_amplitudes !== nothing && isa(t2_amplitudes, Dict) && length(t2_amplitudes) > 0
@@ -357,7 +357,7 @@ end
 
 # ======================== CASCI-based Method ========================
 
-function generate_configurations_casci(mf, mol_neo, config_sel::ConfigSelection)
+function generate_configurations_casci(mf, mol_neo, config_sel::ConfigSelection, t2_amplitudes=nothing)
     """
     Generate configurations from CASCI calculation
     """
@@ -367,7 +367,7 @@ function generate_configurations_casci(mf, mol_neo, config_sel::ConfigSelection)
     mc = run_neo_casci(mf, mol_neo, config_sel)
     if mc === nothing
         @warn "CASCI failed, falling back to MP2"
-        return generate_configurations_mp2(mf, mol_neo, config_sel)
+        return generate_configurations_mp2(mf, mol_neo, config_sel, t2_amplitudes)
     end
     
     # Extract configurations from CASCI wavefunction
@@ -418,7 +418,7 @@ end
 
 # ======================== NEO-specific Methods ========================
 
-function generate_configurations_neo_cneo(mf, mol_neo, config_sel::ConfigSelection)
+function generate_configurations_neo_cneo(mf, mol_neo, config_sel::ConfigSelection, t2_amplitudes=nothing)
     """
     Generate configurations using cNEO-enhanced approach
     """
@@ -735,12 +735,12 @@ end
 
 # ======================== Other NEO Methods ========================
 
-function generate_configurations_neo_enhanced(mf, mol_neo, config_sel::ConfigSelection)
+function generate_configurations_neo_enhanced(mf, mol_neo, config_sel::ConfigSelection, t2_amplitudes=nothing)
     """
     Enhanced NEO configuration generation with additional features
     """
     # Start with cNEO configurations
-    configs = generate_configurations_neo_cneo(mf, mol_neo, config_sel)
+    configs = generate_configurations_neo_cneo(mf, mol_neo, config_sel, t2_amplitudes)
     
     # Add additional configurations based on density analysis
     if length(configs) < config_sel.max_configs / 2
@@ -775,17 +775,17 @@ function generate_configurations_neo_enhanced(mf, mol_neo, config_sel::ConfigSel
     return configs
 end
 
-function generate_configurations_neo_final(mf, mol_neo, config_sel::ConfigSelection)
+function generate_configurations_neo_final(mf, mol_neo, config_sel::ConfigSelection, t2_amplitudes=nothing)
     """
     Final NEO method with all enhancements
     """
     # Similar to neo_enhanced but with final optimizations
-    return generate_configurations_neo_enhanced(mf, mol_neo, config_sel)
+    return generate_configurations_neo_enhanced(mf, mol_neo, config_sel, t2_amplitudes)
 end
 
 # ======================== Hybrid Method ========================
 
-function generate_configurations_hybrid_final(mf, mol_neo, config_sel::ConfigSelection)
+function generate_configurations_hybrid_final(mf, mol_neo, config_sel::ConfigSelection, t2_amplitudes=nothing)
     """
     Hybrid method combining multiple approaches
     """
@@ -796,14 +796,14 @@ function generate_configurations_hybrid_final(mf, mol_neo, config_sel::ConfigSel
     # 1. Get MP2 configurations
     config_mp2 = deepcopy(config_sel)
     config_mp2.max_configs = div(config_sel.max_configs, 3)
-    mp2_configs = generate_configurations_mp2(mf, mol_neo, config_mp2)
+    mp2_configs = generate_configurations_mp2(mf, mol_neo, config_mp2, t2_amplitudes)
     append!(all_configs, mp2_configs)
     
     # 2. Get NEO configurations if quantum nuclei present
     if pybuiltin("hasattr")(mol_neo, "nuc_num") && mol_neo.nuc_num > 0
         config_neo = deepcopy(config_sel)
         config_neo.max_configs = div(config_sel.max_configs, 3)
-        neo_configs = generate_configurations_neo_cneo(mf, mol_neo, config_neo)
+        neo_configs = generate_configurations_neo_cneo(mf, mol_neo, config_neo, t2_amplitudes)
         
         # Avoid duplicates
         existing_names = Set(c.name for c in all_configs)
@@ -820,7 +820,7 @@ function generate_configurations_hybrid_final(mf, mol_neo, config_sel::ConfigSel
         config_cas.max_configs = div(config_sel.max_configs, 3)
         config_cas.active_orbs = 8  # Add default values
         config_cas.active_elec = 4
-        cas_configs = generate_configurations_casci(mf, mol_neo, config_cas)
+        cas_configs = generate_configurations_casci(mf, mol_neo, config_cas, t2_amplitudes)
         
         existing_names = Set(c.name for c in all_configs)
         for config in cas_configs

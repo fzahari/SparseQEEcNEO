@@ -1,8 +1,11 @@
 #!/bin/bash
 # SparseQEEcNEO environment setup
 
-# Set PySCF path (update this to your PySCF installation)
-export PYSCF_PATH="/path/to/pyscf-master"
+# IMPORTANT: PySCF must be installed from https://github.com/theorychemyang/pyscf
+# Standard PySCF installations will NOT work - NEO support is required
+
+# Set PySCF path (update this to your PySCF installation with NEO support)
+export PYSCF_PATH="/path/to/pyscf"  # Point to https://github.com/theorychemyang/pyscf clone
 
 # Set Python path
 export PYTHONPATH="$PYSCF_PATH:$PYTHONPATH"

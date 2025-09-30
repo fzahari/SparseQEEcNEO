@@ -41,6 +41,7 @@ println("="^60)
     include("test_hamiltonian_construction.jl")
     include("test_qee_methods.jl")
     include("test_nuclear_methods.jl")
+    include("test_cneo_methods.jl")
     
     # PySCF-dependent tests
     if PYSCF_AVAILABLE != false && NEO_AVAILABLE

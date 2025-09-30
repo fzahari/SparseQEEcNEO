@@ -93,7 +93,8 @@ function check_pyscf_neo()
     pyscf_path = get(ENV, "PYSCF_PATH", "")
     if isempty(pyscf_path)
         println("  ⚠ PYSCF_PATH environment variable not set")
-        println("  Set with: export PYSCF_PATH=/path/to/pyscf-master")
+        println("  Install PySCF with NEO: git clone https://github.com/theorychemyang/pyscf.git")
+        println("  Then set with: export PYSCF_PATH=/path/to/pyscf")
         return false
     end
     
@@ -133,7 +134,7 @@ function check_pyscf_neo()
                 neo_available = True
             else:
                 print("  ✗ NEO module not found")
-                print("  Install NEO-enabled PySCF from: https://github.com/corinwagen/pyscf")
+                print("  Install NEO-enabled PySCF from: https://github.com/theorychemyang/pyscf")
                 neo_available = False
                 
         except ImportError as e:
@@ -169,8 +170,11 @@ function generate_env_script()
     #!/bin/bash
     # SparseQEEcNEO environment setup
     
-    # Set PySCF path (update this to your PySCF installation)
-    export PYSCF_PATH="/path/to/pyscf-master"
+    # IMPORTANT: Install PySCF with NEO support first:
+    # git clone https://github.com/theorychemyang/pyscf.git && cd pyscf && pip install -e .
+    
+    # Set PySCF path (update this to your NEO-enabled PySCF installation)
+    export PYSCF_PATH="/path/to/pyscf"
     
     # Set Python path
     export PYTHONPATH="\$PYSCF_PATH:\$PYTHONPATH"

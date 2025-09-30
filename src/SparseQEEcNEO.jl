@@ -23,7 +23,7 @@ include("configuration_generation.jl")  # Uses NuclearMethods
 include("importance_analysis.jl")
 include("qee_methods.jl")
 include("hamiltonian_construction.jl")
-# Note: cNEO modules are available as separate files but not included in main module due to dependencies
+include("cneo_methods.jl")  # Constrained NEO methods - Clean Code implementation
 
 # Import from submodules
 using .Types
@@ -34,6 +34,7 @@ using .ConfigurationGeneration
 using .ImportanceAnalysis
 using .QEEMethods
 using .HamiltonianConstruction
+using .CNEOMethods
 
 # Make sure this function is imported
 import .NuclearMethods: apply_nuclear_orbital_truncation!
@@ -50,6 +51,9 @@ export truncate_nuclear_orbitals, apply_nuclear_orbital_truncation!
 export construct_second_quantized_hamiltonian, save_hamiltonian, load_hamiltonian
 export HamiltonianData, analyze_hamiltonian_properties
 export export_hamiltonian_openfermion
+# Export cNEO functionality
+export CNEOCalculation, CNEOResults, CNEOMP2Results
+export run_cneo_hf, run_cneo_mp2, create_cneo_calculation
 
 # Note: cNEO functionality available in advanced_examples/cneo/ directory
 
@@ -1024,16 +1028,25 @@ function run_demo_mode()
     println("   - Active space determination")
     println("   - HDF5 storage format")
     
-    println("\n5. Modular Testing Approach:")
+    println("5. Constrained NEO (cNEO) Methods:")
+    println("   - cNEO-HF: Constrained NEO Hartree-Fock")
+    println("   - cNEO-MP2: Constrained NEO with MP2 correlation")
+    println("   - Nuclear position constraints with Lagrange multipliers")
+    println("   - Newton optimization with analytical Hessians")
+    println("   - Clean Code implementation with small functions")
+    
+    println("\n6. Modular Testing Approach:")
     println("   - Test each component independently")
     println("   - Electronic-only calculations")
     println("   - Nuclear method validation")
     println("   - EPC functional comparison")
     println("   - Configuration compression")
     println("   - Hamiltonian construction")
+    println("   - cNEO constraint satisfaction")
     
     println("\n" * "="^60)
     println("Install PySCF with NEO for full functionality")
+    println("cNEO methods available with integrated Clean Code implementation")
     println("="^60)
 end
 
