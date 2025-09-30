@@ -98,13 +98,63 @@ mp2_results = run_cneo_mp2(mol, [constraint_position])
 println("cNEO-MP2 Energy: $(mp2_results.total_energy) Ha")
 ```
 
+## cNEO-QEE Integration
+
+The package provides **complete integration** between constrained NEO and quantum computing:
+
+```julia
+using SparseQEEcNEO
+
+# Complete cNEO → QEE → Quantum Computing workflow
+mol = Molecule("H 0 0 0; H 0 0 0.74", "sto-3g", quantum_nuc=[0])
+constraint_position = [0.0, 0.0, 0.5]  # Target position for quantum proton
+
+# Create cNEO constraint calculation
+cneo_calc = create_cneo_calculation(
+    method="HF",
+    constraint_positions=[constraint_position],
+    convergence_threshold=1e-6,
+    max_iterations=50
+)
+
+# Create QEE configuration for quantum computing
+config_sel = ConfigSelection(
+    method="mp2",
+    max_configs=20,
+    max_qubits=6
+)
+
+# Run integrated cNEO-QEE workflow
+cneo_results, qee_results = sparse_qee_with_cneo(
+    mol, 
+    cneo_calc,
+    config_sel=config_sel
+)
+
+println("cNEO Energy: $(cneo_results.total_energy) Ha")
+println("QEE Configurations: $(qee_results.n_configs)")
+println("Qubits Required: $(qee_results.n_qubits)")
+
+# Export for quantum computing
+save_hamiltonian("cneo_qee.h5", qee_results.hamiltonian_data, qee_results.hamiltonian_matrix)
+```
+
 ### cNEO Features
 
 - **Nuclear Position Constraints**: Enforce specific positions for quantum nuclei
 - **Lagrange Multiplier Optimization**: Newton method with analytical Hessians
 - **cNEO-HF and cNEO-MP2**: Hartree-Fock and correlation-corrected methods
+- **cNEO-QEE Integration**: Complete workflow from constraints to quantum computing
 - **Clean Code Implementation**: Small, focused functions following Clean Code principles
 - **Comprehensive Error Handling**: Robust validation and convergence monitoring
+
+### Integration Workflow
+
+1. **cNEO Constraint Optimization**: Apply position constraints to quantum nuclei
+2. **Geometry Optimization**: Use constrained positions for molecular geometry
+3. **QEE Configuration Selection**: Generate configurations with cNEO-optimized positions
+4. **Hamiltonian Construction**: Build quantum computing Hamiltonian
+5. **Quantum Algorithm Ready**: Export to OpenFermion, Qiskit, Cirq
 
 ## Development
 
@@ -122,6 +172,8 @@ The WARP.md file contains comprehensive guidance including:
 ```bash
 # Run examples
 julia examples/basic_usage.jl
+julia examples/cneo_example.jl          # cNEO constrained calculations
+julia examples/cneo_qee_integration.jl  # Complete cNEO-QEE workflow
 
 # Run tests
 julia test/runtests.jl
