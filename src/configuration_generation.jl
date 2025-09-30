@@ -15,148 +15,304 @@ export create_reference_config, compress_configurations
 
 # ======================== Main Configuration Generation ========================
 
-function generate_configurations(mf, mol_neo, config_sel::ConfigSelection, t2_amplitudes=nothing)
-    """
-    Generate configurations based on selected method
-    """
-    @info "Generating important configurations using $(config_sel.method) method..."
+# Constants for Clean Code compliance
+const DEFAULT_MP2_WEIGHT = 4.0
+const CONFIGURATION_COMPRESSION_THRESHOLD = 100
+const NUCLEAR_MASS_FACTOR = 1836.0
+const COUPLING_ENHANCEMENT_BASE = 1.0
+
+"""
+    generate_configurations(meanfield_result, neo_molecule, config_selection, t2_amplitudes)
+
+Generate quantum configurations using the specified method.
+
+# Arguments
+- `meanfield_result`: Quantum chemistry mean-field calculation result
+- `neo_molecule`: NEO molecular system
+- `config_selection`: Configuration selection parameters
+- `t2_amplitudes`: Optional MP2 t2 amplitudes for enhancement
+
+# Returns
+- `Vector{Configuration}`: Generated configurations
+"""
+function generate_configurations(meanfield_result, neo_molecule, config_selection::ConfigSelection, t2_amplitudes=nothing)
+    @info "Generating important configurations using $(config_selection.method) method..."
     
-    # Choose generation method
-    if config_sel.method == "mp2"
-        configs = generate_configurations_mp2(mf, mol_neo, config_sel)
-    elseif config_sel.method == "mp2_enhanced"
-        configs = generate_configurations_mp2_enhanced(mf, mol_neo, config_sel, t2_amplitudes)
-    elseif config_sel.method == "casci"
-        configs = generate_configurations_casci(mf, mol_neo, config_sel)
-    elseif config_sel.method == "neo_cneo"
-        configs = generate_configurations_neo_cneo(mf, mol_neo, config_sel)
-    elseif config_sel.method == "neo_enhanced"
-        configs = generate_configurations_neo_enhanced(mf, mol_neo, config_sel)
-    elseif config_sel.method == "neo_final"
-        configs = generate_configurations_neo_final(mf, mol_neo, config_sel)
-    elseif config_sel.method == "hybrid_final"
-        configs = generate_configurations_hybrid_final(mf, mol_neo, config_sel)
+    configuration_generator = create_configuration_generator(config_selection.method)
+    generated_configs = configuration_generator(meanfield_result, neo_molecule, config_selection, t2_amplitudes)
+    
+    final_configs = apply_compression_if_requested(generated_configs, config_selection)
+    
+    @info "Generated $(length(final_configs)) configurations"
+    return final_configs
+end
+
+function create_configuration_generator(method_name::String)
+    method_map = Dict(
+        "mp2" => generate_configurations_mp2,
+        "mp2_enhanced" => generate_configurations_mp2_enhanced,
+        "casci" => generate_configurations_casci,
+        "neo_cneo" => generate_configurations_neo_cneo,
+        "neo_enhanced" => generate_configurations_neo_enhanced,
+        "neo_final" => generate_configurations_neo_final,
+        "hybrid_final" => generate_configurations_hybrid_final
+    )
+    
+    if haskey(method_map, method_name)
+        return method_map[method_name]
     else
-        @warn "Unknown method $(config_sel.method), using MP2"
-        configs = generate_configurations_mp2(mf, mol_neo, config_sel)
+        @warn "Unknown method $method_name, using MP2"
+        return generate_configurations_mp2
     end
-    
-    # Apply compression if requested
-    if config_sel.use_compression && length(configs) > 100
-        configs = compress_configurations(configs)
+end
+
+function apply_compression_if_requested(configurations::Vector, config_selection::ConfigSelection)
+    if should_compress_configurations(configurations, config_selection)
+        return compress_configurations(configurations)
+    else
+        return configurations
     end
-    
-    @info "Generated $(length(configs)) configurations"
-    
-    return configs
+end
+
+function should_compress_configurations(configurations::Vector, config_selection::ConfigSelection)
+    return config_selection.use_compression && length(configurations) > CONFIGURATION_COMPRESSION_THRESHOLD
 end
 
 # ======================== MP2-based Methods ========================
 
-function generate_configurations_mp2(mf, mol_neo, config_sel::ConfigSelection)
-    """
-    Generate configurations using MP2-like importance weights
-    """
-    configs = Configuration[]
+"""
+    MP2OrbitalData
+
+Structure to hold orbital information for MP2 calculations.
+"""
+struct MP2OrbitalData
+    occupations::Vector{Float64}
+    energies::Vector{Float64}
+    occupied_count::Int
+    total_count::Int
+end
+
+function generate_configurations_mp2(meanfield_result, neo_molecule, config_selection::ConfigSelection, t2_amplitudes=nothing)
+    configurations = Configuration[]
     
-    # Get electronic component
-    if !pybuiltin("hasattr")(mf, "components") || !haskey(mf.components, "e")
+    electronic_component = extract_electronic_component(meanfield_result)
+    if electronic_component === nothing
+        return configurations
+    end
+    
+    orbital_data = extract_orbital_data(electronic_component)
+    if orbital_data === nothing
+        return configurations
+    end
+    
+    # Add reference configuration
+    reference_config = create_reference_config(meanfield_result, neo_molecule, "HF")
+    push!(configurations, reference_config)
+    
+    # Generate single excitation configurations
+    single_excitations = generate_single_excitation_configurations(orbital_data, config_selection)
+    append!(configurations, single_excitations)
+    
+    # Generate double excitation configurations if requested
+    if config_selection.include_doubles
+        double_excitations = generate_double_excitation_configurations(orbital_data, config_selection)
+        append!(configurations, double_excitations)
+    end
+    
+    return sort_configurations_by_importance(configurations)
+end
+
+function extract_electronic_component(meanfield_result)
+    if !has_electronic_component(meanfield_result)
         @warn "No electronic component found"
-        return configs
+        return nothing
     end
-    
-    mf_elec = mf.components["e"]
-    
-    # Get occupations and energies
-    if !pybuiltin("hasattr")(mf_elec, "mo_occ") || !pybuiltin("hasattr")(mf_elec, "mo_energy")
+    return meanfield_result.components["e"]
+end
+
+function has_electronic_component(meanfield_result)
+    return pybuiltin("hasattr")(meanfield_result, "components") && 
+           haskey(meanfield_result.components, "e")
+end
+
+function extract_orbital_data(electronic_component)
+    if !has_required_orbital_properties(electronic_component)
         @warn "Missing orbital information"
-        return configs
+        return nothing
     end
     
-    elec_occ = collect(mf_elec.mo_occ)
-    elec_energy = collect(mf_elec.mo_energy)
+    occupations = collect(electronic_component.mo_occ)
+    energies = collect(electronic_component.mo_energy)
+    occupied_count = sum(occupations .> 0.5)
+    total_count = length(occupations)
     
-    # Reference configuration
-    ref_config = create_reference_config(mf, mol_neo, "HF")
-    push!(configs, ref_config)
+    return MP2OrbitalData(occupations, energies, occupied_count, total_count)
+end
+
+function has_required_orbital_properties(electronic_component)
+    return pybuiltin("hasattr")(electronic_component, "mo_occ") &&
+           pybuiltin("hasattr")(electronic_component, "mo_energy")
+end
+
+function generate_single_excitation_configurations(orbital_data::MP2OrbitalData, config_selection::ConfigSelection)
+    configurations = Configuration[]
     
-    # Electronic excitations
-    n_elec = sum(elec_occ .> 0.5)
-    n_orbs = length(elec_occ)
-    
-    # Single excitations
-    for i in 1:n_elec
-        for a in (n_elec+1):n_orbs
-            if a > length(elec_energy)
-                continue
-            end
+    for occupied_orbital in 1:orbital_data.occupied_count
+        for virtual_orbital in (orbital_data.occupied_count + 1):orbital_data.total_count
             
-            energy_gap = elec_energy[a] - elec_energy[i]
-            if energy_gap > config_sel.energy_cutoff
-                continue
-            end
+            excitation_config = create_single_excitation_config(
+                orbital_data, occupied_orbital, virtual_orbital, config_selection
+            )
             
-            # MP2-like weight
-            weight = 4.0 / (1.0 + energy_gap)
-            
-            if weight > config_sel.importance_cutoff
-                occ_new = copy(elec_occ)
-                occ_new[i] = 0
-                occ_new[a] = 1
-                
-                config = Configuration(
-                    "S($i→$a)",
-                    Dict("e" => Int16.(occ_new)),
-                    weight
-                )
-                push!(configs, config)
+            if excitation_config !== nothing
+                push!(configurations, excitation_config)
             end
         end
     end
     
-    # Double excitations if requested
-    if config_sel.include_doubles
-        for i in 1:(n_elec-1)
-            for j in (i+1):n_elec
-                for a in (n_elec+1):(n_orbs-1)
-                    for b in (a+1):n_orbs
-                        if b > length(elec_energy)
-                            continue
-                        end
-                        
-                        energy_gap = elec_energy[a] + elec_energy[b] - 
-                                   elec_energy[i] - elec_energy[j]
-                        
-                        if energy_gap > config_sel.energy_cutoff
-                            continue
-                        end
-                        
-                        weight = 1.0 / (1.0 + energy_gap)
-                        
-                        if weight > config_sel.importance_cutoff
-                            occ_new = copy(elec_occ)
-                            occ_new[i] = 0
-                            occ_new[j] = 0
-                            occ_new[a] = 1
-                            occ_new[b] = 1
-                            
-                            config = Configuration(
-                                "D($i$j→$a$b)",
-                                Dict("e" => Int16.(occ_new)),
-                                weight
-                            )
-                            push!(configs, config)
-                        end
+    return configurations
+end
+
+function create_single_excitation_config(orbital_data::MP2OrbitalData, from_orbital::Int, 
+                                       to_orbital::Int, config_selection::ConfigSelection)
+    
+    if !is_valid_excitation(orbital_data, from_orbital, to_orbital)
+        return nothing
+    end
+    
+    energy_gap = calculate_excitation_energy_gap(orbital_data, from_orbital, to_orbital)
+    
+    if !passes_energy_cutoff(energy_gap, config_selection)
+        return nothing
+    end
+    
+    excitation_weight = calculate_mp2_single_excitation_weight(energy_gap)
+    
+    if !passes_importance_cutoff(excitation_weight, config_selection)
+        return nothing
+    end
+    
+    new_occupation = create_single_excitation_occupation(orbital_data, from_orbital, to_orbital)
+    configuration_name = create_single_excitation_name(from_orbital, to_orbital)
+    
+    return Configuration(
+        configuration_name,
+        Dict("e" => Int16.(new_occupation)),
+        excitation_weight
+    )
+end
+
+function is_valid_excitation(orbital_data::MP2OrbitalData, from_orbital::Int, to_orbital::Int)
+    return to_orbital <= length(orbital_data.energies)
+end
+
+function calculate_excitation_energy_gap(orbital_data::MP2OrbitalData, from_orbital::Int, to_orbital::Int)
+    return orbital_data.energies[to_orbital] - orbital_data.energies[from_orbital]
+end
+
+function passes_energy_cutoff(energy_gap::Float64, config_selection::ConfigSelection)
+    return energy_gap <= config_selection.energy_cutoff
+end
+
+function calculate_mp2_single_excitation_weight(energy_gap::Float64)
+    return DEFAULT_MP2_WEIGHT / (COUPLING_ENHANCEMENT_BASE + energy_gap)
+end
+
+function passes_importance_cutoff(weight::Float64, config_selection::ConfigSelection)
+    return weight > config_selection.importance_cutoff
+end
+
+function create_single_excitation_occupation(orbital_data::MP2OrbitalData, from_orbital::Int, to_orbital::Int)
+    new_occupation = copy(orbital_data.occupations)
+    new_occupation[from_orbital] = 0
+    new_occupation[to_orbital] = 1
+    return new_occupation
+end
+
+function create_single_excitation_name(from_orbital::Int, to_orbital::Int)
+    return "S($from_orbital→$to_orbital)"
+end
+
+function generate_double_excitation_configurations(orbital_data::MP2OrbitalData, config_selection::ConfigSelection)
+    configurations = Configuration[]
+    
+    for i in 1:(orbital_data.occupied_count - 1)
+        for j in (i + 1):orbital_data.occupied_count
+            for a in (orbital_data.occupied_count + 1):(orbital_data.total_count - 1)
+                for b in (a + 1):orbital_data.total_count
+                    
+                    double_config = create_double_excitation_config(
+                        orbital_data, i, j, a, b, config_selection
+                    )
+                    
+                    if double_config !== nothing
+                        push!(configurations, double_config)
                     end
                 end
             end
         end
     end
     
-    # Sort by weight
-    sort!(configs, by=c->c.weight, rev=true)
+    return configurations
+end
+
+function create_double_excitation_config(orbital_data::MP2OrbitalData, i::Int, j::Int, 
+                                       a::Int, b::Int, config_selection::ConfigSelection)
     
-    return configs
+    if !is_valid_double_excitation(orbital_data, i, j, a, b)
+        return nothing
+    end
+    
+    total_energy_gap = calculate_double_excitation_energy_gap(orbital_data, i, j, a, b)
+    
+    if !passes_energy_cutoff(total_energy_gap, config_selection)
+        return nothing
+    end
+    
+    excitation_weight = calculate_mp2_double_excitation_weight(total_energy_gap)
+    
+    if !passes_importance_cutoff(excitation_weight, config_selection)
+        return nothing
+    end
+    
+    new_occupation = create_double_excitation_occupation(orbital_data, i, j, a, b)
+    configuration_name = create_double_excitation_name(i, j, a, b)
+    
+    return Configuration(
+        configuration_name,
+        Dict("e" => Int16.(new_occupation)),
+        excitation_weight
+    )
+end
+
+function is_valid_double_excitation(orbital_data::MP2OrbitalData, i::Int, j::Int, a::Int, b::Int)
+    return b <= length(orbital_data.energies)
+end
+
+function calculate_double_excitation_energy_gap(orbital_data::MP2OrbitalData, i::Int, j::Int, a::Int, b::Int)
+    return (orbital_data.energies[a] + orbital_data.energies[b]) - 
+           (orbital_data.energies[i] + orbital_data.energies[j])
+end
+
+function calculate_mp2_double_excitation_weight(energy_gap::Float64)
+    return COUPLING_ENHANCEMENT_BASE / (COUPLING_ENHANCEMENT_BASE + energy_gap)
+end
+
+function create_double_excitation_occupation(orbital_data::MP2OrbitalData, i::Int, j::Int, a::Int, b::Int)
+    new_occupation = copy(orbital_data.occupations)
+    new_occupation[i] = 0
+    new_occupation[j] = 0
+    new_occupation[a] = 1
+    new_occupation[b] = 1
+    return new_occupation
+end
+
+function create_double_excitation_name(i::Int, j::Int, a::Int, b::Int)
+    return "D($i$j→$a$b)"
+end
+
+function sort_configurations_by_importance(configurations::Vector{Configuration})
+    return sort!(configurations, by=c -> c.weight, rev=true)
 end
 
 function generate_configurations_mp2_enhanced(mf, mol_neo, config_sel::ConfigSelection, t2_amplitudes)
