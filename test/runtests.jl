@@ -60,9 +60,8 @@ println("\nTest suite completed!")
 # Run additional test files if they exist and PySCF is available
 if PYSCF_AVAILABLE != false && NEO_AVAILABLE
     test_files = [
-        "test_cneo_hf.jl",
-        "test_cneo_mp2.jl",
-        "test_cneo_dft.jl"
+        "../advanced_examples/cneo/test_cneo_hf.jl",
+        "../advanced_examples/cneo/test_cneo_mp2.jl"
     ]
     
     for test_file in test_files

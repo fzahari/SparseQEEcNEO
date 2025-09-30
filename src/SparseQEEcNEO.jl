@@ -51,7 +51,7 @@ export construct_second_quantized_hamiltonian, save_hamiltonian, load_hamiltonia
 export HamiltonianData, analyze_hamiltonian_properties
 export export_hamiltonian_openfermion
 
-# Note: cNEO functionality available as separate modules in src/cneo_hf.jl and src/cneo_mp2.jl
+# Note: cNEO functionality available in advanced_examples/cneo/ directory
 
 # ======================== Main Interface Function ========================
 
