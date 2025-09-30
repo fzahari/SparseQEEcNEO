@@ -9,40 +9,58 @@ This directory contains a complete integration between **SparseQEEcNEO.jl** (Nuc
 ### 1. **Interactive Demo** (Recommended)
 ```bash
 # Run the clean, well-documented demo
-julia --project=. quantum_demo_clean.jl
+julia --project=. quantum_integration/examples/quantum_demo_clean.jl
 ```
 
 ### 2. **Interactive Development**
 ```bash
 # Launch Jupyter notebook for interactive exploration
 conda activate sparseqee
-jupyter notebook quantum_integration.ipynb
+jupyter notebook quantum_integration/notebooks/quantum_integration.ipynb
 ```
 
 ### 3. **Testing Environment**
 ```bash
 # Test Julia components
-julia --project=. test_module_loading.jl
+julia --project=. quantum_integration/tests/test_module_loading.jl
 
 # Test Python quantum packages  
 conda activate sparseqee
-python test_quantum_packages.py
+python quantum_integration/tests/test_quantum_packages.py
+```
+
+## 📁 Directory Structure
+
+```
+quantum_integration/
+├── README.md                     # This file - main entry point
+├── examples/                     # Demonstration scripts
+│   ├── quantum_demo_clean.jl     # ⭐ START HERE - Clean Code demo
+│   ├── quantum_demo_simple.jl    # Simplified version
+│   └── quantum_integration_example.jl  # Advanced example
+├── tests/                        # Test suites
+│   ├── test_module_loading.jl    # Julia component tests
+│   └── test_quantum_packages.py  # Python package tests
+├── notebooks/                    # Interactive development
+│   └── quantum_integration.ipynb # Jupyter notebook
+└── docs/                        # Documentation
+    └── CLEAN_CODE_COMPLIANCE.md # Clean Code implementation details
 ```
 
 ## 📁 File Guide
 
 ### **Primary Files**
-- **`quantum_demo_clean.jl`** ⭐ - **START HERE**: Clean Code demo of the complete workflow
-- **`quantum_integration.ipynb`** - Interactive Jupyter notebook for development
-- **`CLEAN_CODE_COMPLIANCE.md`** - Complete documentation of Clean Code adherence
+- **`examples/quantum_demo_clean.jl`** ⭐ - **START HERE**: Clean Code demo of the complete workflow
+- **`notebooks/quantum_integration.ipynb`** - Interactive Jupyter notebook for development
+- **`docs/CLEAN_CODE_COMPLIANCE.md`** - Complete documentation of Clean Code adherence
 
 ### **Test Files**
-- **`test_module_loading.jl`** - Tests SparseQEEcNEO components with modular functions
-- **`test_quantum_packages.py`** - Comprehensive testing of quantum computing packages
+- **`tests/test_module_loading.jl`** - Tests SparseQEEcNEO components with modular functions
+- **`tests/test_quantum_packages.py`** - Comprehensive testing of quantum computing packages
 
 ### **Additional Examples**
-- **`quantum_integration_example.jl`** - Extended integration example (advanced)
-- **`quantum_demo_simple.jl`** - Simplified version (same as clean version)
+- **`examples/quantum_integration_example.jl`** - Extended integration example (advanced)
+- **`examples/quantum_demo_simple.jl`** - Simplified version (same as clean version)
 
 ## ✨ Clean Code Features
 
@@ -127,9 +145,9 @@ pip install qiskit qiskit-aer openfermion cirq qiskit-nature qiskit-algorithms
 ```
 
 ### **Development Cycle**
-1. **Develop** in Jupyter notebook (`quantum_integration.ipynb`)
-2. **Test** components with modular test files
-3. **Validate** integration with clean demo
+1. **Develop** in Jupyter notebook (`notebooks/quantum_integration.ipynb`)
+2. **Test** components with modular test files in `tests/`
+3. **Validate** integration with clean demo (`examples/quantum_demo_clean.jl`)
 4. **Deploy** to quantum simulators/hardware
 
 ### **Code Quality Standards**
@@ -142,14 +160,14 @@ pip install qiskit qiskit-aer openfermion cirq qiskit-nature qiskit-algorithms
 
 ## 📚 Documentation
 
-- **`CLEAN_CODE_COMPLIANCE.md`** - Complete Clean Code implementation details
+- **`docs/CLEAN_CODE_COMPLIANCE.md`** - Complete Clean Code implementation details
 - **Inline documentation** - All functions have clear docstrings
 - **Example workflows** - Multiple examples from basic to advanced
 - **Error messages** - Clear, actionable feedback throughout
 
 ## 🎯 Next Steps
 
-1. **Explore the demo**: Run `quantum_demo_clean.jl` to see the integration
+1. **Explore the demo**: Run `examples/quantum_demo_clean.jl` to see the integration
 2. **Interactive development**: Use the Jupyter notebook for exploration
 3. **Extend functionality**: Add new quantum algorithms or molecular systems
 4. **Production deployment**: Scale to larger systems and real quantum hardware
