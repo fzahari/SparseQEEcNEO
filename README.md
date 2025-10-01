@@ -11,7 +11,11 @@
 - **Second-quantized Hamiltonian construction** for quantum computing
 - **Multiple configuration selection methods** (MP2, CASCI, NEO-enhanced)
 - **Electron-proton correlation (EPC) functionals** (17-1/2, 18-1/2)
-- **Export to OpenFermion format** for quantum algorithms
+- **Comprehensive Quantum Computing Integration** with major frameworks:
+  - **OpenFermion**: Fermionic operators for quantum chemistry  
+  - **Qiskit**: IBM quantum computing with VQE/QAOA support
+  - **Cirq**: Google quantum computing framework
+  - **Resource Estimation**: Automatic qubit and circuit depth analysis
 - **Constrained NEO (cNEO) methods** with Lagrange multiplier constraints
 
 ## Installation Requirements
@@ -64,7 +68,14 @@ println("Configurations: $(results.n_configs)")
 
 # Save Hamiltonian for quantum computing
 save_hamiltonian("h2.h5", results.hamiltonian_data, results.hamiltonian_matrix)
-export_hamiltonian_openfermion(results.hamiltonian_data, "h2_quantum.txt")
+
+# Export to all quantum computing formats
+exportResults = exportToQuantumFormats(results.hamiltonian_data, "all", "h2_quantum")
+println("Exported to: OpenFermion, Qiskit, Cirq formats")
+
+# Estimate quantum computing resources
+resources = estimateQuantumResources(results.hamiltonian_data)
+println("Quantum resources: $(resources["qubits_required"]) qubits, $(resources["circuit_depth"]) depth")
 ```
 
 ## Constrained NEO (cNEO) Methods
@@ -135,8 +146,20 @@ println("cNEO Energy: $(cneo_results.total_energy) Ha")
 println("QEE Configurations: $(qee_results.n_configs)")
 println("Qubits Required: $(qee_results.n_qubits)")
 
-# Export for quantum computing
+# Export for quantum computing - all major formats supported
 save_hamiltonian("cneo_qee.h5", qee_results.hamiltonian_data, qee_results.hamiltonian_matrix)
+
+# Export to quantum computing frameworks
+exportResults = exportToQuantumFormats(qee_results.hamiltonian_data, "all", "cneo_qee")
+
+# Estimate quantum resources
+resources = estimateQuantumResources(qee_results.hamiltonian_data, "VQE")
+println("Qubits required: $(resources["qubits_required"])")
+println("Circuit depth: $(resources["circuit_depth"])")
+
+# Create VQE circuit for quantum computing
+vqeCircuit = createVQECircuit(resources["qubits_required"])
+println("VQE parameters: $(vqeCircuit["parameter_count"])")
 ```
 
 ### cNEO Features

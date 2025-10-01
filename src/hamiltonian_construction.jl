@@ -58,42 +58,65 @@ Returns:
 function construct_second_quantized_hamiltonian(mf, mol_neo, configs, config_sel)
     @info "Constructing second-quantized Hamiltonian for $(length(configs)) configurations"
     
-    # Extract integral information
-    h1e_dict, h2e_dict = extract_integrals(mf, mol_neo)
+    integralData = extractIntegralData(mf, mol_neo)
+    orbitalSpaceData = determineOrbitalSpaces(configs, mf)
+    systemData = extractSystemData(mf, mol_neo)
     
-    # Calculate coupling terms
-    coupling_dict = calculate_coupling_integrals(mf, mol_neo)
-    
-    # Determine active space
-    active_orbs, frozen_orbs = determine_active_space(configs, mf)
-    
-    # Get system information
-    n_orbitals, n_electrons = get_system_info(mf, mol_neo)
-    nuclear_charges = get_nuclear_charges(mol_neo)
-    
-    # Build Hamiltonian matrix in configuration basis
-    H_matrix = build_configuration_hamiltonian(
-        configs, h1e_dict, h2e_dict, coupling_dict, active_orbs
+    hamiltonianMatrix = buildConfigurationHamiltonian(
+        configs, integralData, orbitalSpaceData
     )
     
-    # Calculate diagonal energies for reference
-    config_energies = Float64[H_matrix[i,i] for i in 1:size(H_matrix, 1)]
+    hamiltonianData = createHamiltonianDataStruct(
+        integralData, orbitalSpaceData, systemData, configs, hamiltonianMatrix
+    )
     
-    # Create HamiltonianData structure
-    ham_data = HamiltonianData(
-        h1e_dict,
-        h2e_dict,
-        coupling_dict,
-        n_orbitals,
-        n_electrons,
-        nuclear_charges,
+    return hamiltonianData, hamiltonianMatrix
+end
+
+function extractIntegralData(mf, molNeo)
+    h1eDict, h2eDict = extract_integrals(mf, molNeo)
+    couplingDict = calculate_coupling_integrals(mf, molNeo)
+    return (h1e=h1eDict, h2e=h2eDict, coupling=couplingDict)
+end
+
+function determineOrbitalSpaces(configs, mf)
+    activeOrbs, frozenOrbs = determine_active_space(configs, mf)
+    return (active=activeOrbs, frozen=frozenOrbs)
+end
+
+function extractSystemData(mf, molNeo)
+    nOrbitals, nElectrons = get_system_info(mf, molNeo)
+    nuclearCharges = get_nuclear_charges(molNeo)
+    return (n_orbitals=nOrbitals, n_electrons=nElectrons, nuclear_charges=nuclearCharges)
+end
+
+function buildConfigurationHamiltonian(configs, integralData, orbitalSpaceData)
+    return build_configuration_hamiltonian(
+        configs, integralData.h1e, integralData.h2e, 
+        integralData.coupling, orbitalSpaceData.active
+    )
+end
+
+function createHamiltonianDataStruct(integralData, orbitalSpaceData, systemData, 
+                                   configs, hamiltonianMatrix)
+    configEnergies = calculateDiagonalEnergies(hamiltonianMatrix)
+    
+    return HamiltonianData(
+        integralData.h1e,
+        integralData.h2e,
+        integralData.coupling,
+        systemData.n_orbitals,
+        systemData.n_electrons,
+        systemData.nuclear_charges,
         configs,
-        config_energies,
-        active_orbs,
-        frozen_orbs
+        configEnergies,
+        orbitalSpaceData.active,
+        orbitalSpaceData.frozen
     )
-    
-    return ham_data, H_matrix
+end
+
+function calculateDiagonalEnergies(hamiltonianMatrix)
+    return Float64[hamiltonianMatrix[i,i] for i in 1:size(hamiltonianMatrix, 1)]
 end
 
 # ======================== Integral Extraction ========================
@@ -896,31 +919,30 @@ end
     export_hamiltonian_openfermion(ham_data::HamiltonianData, filename::String)
 
 Export Hamiltonian in OpenFermion format.
+This function now uses the integrated quantum computing module for enhanced functionality.
 """
 function export_hamiltonian_openfermion(ham_data::HamiltonianData, filename::String)
-    open(filename, "w") do io
-        # Write one-body terms
-        for (comp, h1) in ham_data.h1e
-            for i in 1:size(h1, 1)
-                for j in 1:size(h1, 2)
-                    if abs(h1[i,j]) > 1e-12
-                        println(io, "$(h1[i,j]) $(i-1)^ $(j-1)")
-                    end
-                end
-            end
-        end
-        
-        # Write two-body terms
-        for (comp, h2_dict) in ham_data.h2e
-            for ((i,j,k,l), val) in h2_dict
-                if abs(val) > 1e-12
-                    println(io, "$val $(i-1)^ $(j-1)^ $(k-1) $(l-1)")
-                end
-            end
-        end
+    # Use the new quantum computing integration
+    result = QuantumComputing.exportToOpenFermion(ham_data, filename)
+    
+    if result["success"]
+        @info "Hamiltonian exported to OpenFermion format: $filename"
+        @info "  Operators exported: $(result["operator_count"])"
+    else
+        @warn "OpenFermion export failed: $(result["message"])"
     end
     
-    @info "Hamiltonian exported to OpenFermion format: $filename"
+    return result
+end
+
+"""
+    export_hamiltonian_quantum_formats(ham_data::HamiltonianData, format::String, filename::String)
+
+Export Hamiltonian to multiple quantum computing formats.
+Supported formats: "openfermion", "qiskit", "cirq", "all"
+"""
+function export_hamiltonian_quantum_formats(ham_data::HamiltonianData, format::String, filename::String)
+    return QuantumComputing.exportToQuantumFormats(ham_data, format, filename)
 end
 
 # ======================== Storage Analysis ========================

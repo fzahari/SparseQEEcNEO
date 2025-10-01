@@ -43,6 +43,9 @@ println("="^60)
     include("test_nuclear_methods.jl")
     include("test_cneo_methods.jl")
     
+    # Quantum computing integration tests
+    include("test_quantum_integration.jl")
+    
     # PySCF-dependent tests
     if PYSCF_AVAILABLE != false && NEO_AVAILABLE
         println("\nRunning PySCF/NEO-dependent tests...")
@@ -61,8 +64,8 @@ println("\nTest suite completed!")
 # Run additional test files if they exist and PySCF is available
 if PYSCF_AVAILABLE != false && NEO_AVAILABLE
     test_files = [
-        "../advanced_examples/cneo/test_cneo_hf.jl",
-        "../advanced_examples/cneo/test_cneo_mp2.jl"
+        "../advanced_examples/test_cneo_hf.jl",
+        "../advanced_examples/test_cneo_mp2.jl"
     ]
     
     for test_file in test_files

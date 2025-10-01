@@ -11,66 +11,117 @@ export calculate_neo_importance_metrics
 
 # ======================== Main Importance Calculation ========================
 
-function calculate_importance_metrics(configs, mol_neo, config_sel::ConfigSelection)
-    """
-    Calculate comprehensive importance metrics for configurations
-    """
-    if isempty(configs)
-        return (
-            total_importance = 0.0,
-            neo_metrics = nothing,
-            config_types = Dict{String, Int}()
-        )
+function calculateImportanceMetrics(configs, molNeo, configSelection::ConfigSelection)
+    """Calculate comprehensive importance metrics for configurations"""
+    
+    if isemptyConfigurationSet(configs)
+        return createEmptyImportanceResult()
     end
     
-    # Calculate standard importance
-    weights = [get_weight(c) for c in configs]
-    total_weight = sum(weights)
-    normalized_weights = weights ./ max(total_weight, 1.0)
-    standard_importance = min(sum(normalized_weights), 1.0)
+    standardImportance = calculateStandardImportance(configs)
+    configurationTypes = analyzeConfigurationTypes(configs)
     
-    # Analyze configuration types
-    config_types = analyze_configuration_types(configs)
-    
-    # Calculate NEO-specific metrics if requested
-    neo_metrics = nothing
-    if config_sel.use_neo_importance && has_nuclear_configs(configs)
-        neo_metrics = calculate_neo_importance_metrics(configs, mol_neo, config_types)
-        
-        # Adjust total importance based on NEO metrics
-        enhancement_factor = calculate_neo_enhancement(neo_metrics)
-        total_importance = min(standard_importance * enhancement_factor, 1.0)
-    else
-        total_importance = standard_importance
-    end
-    
-    @info "Importance analysis complete:" *
-          "\n  Standard importance: $(round(standard_importance, digits=3))" *
-          "\n  Total configurations: $(length(configs))" *
-          "\n  Configuration types: $(config_types)"
-    
-    if neo_metrics !== nothing
-        @info "NEO metrics:" *
-              "\n  Nuclear participation: $(round(neo_metrics.nuclear_participation * 100, digits=1))%" *
-              "\n  Coupling contribution: $(round(neo_metrics.coupling_contribution, digits=3))" *
-              "\n  Enhancement factor: $(round(neo_metrics.enhancement_factor, digits=3))"
-    end
-    
-    return (
-        total_importance = total_importance,
-        neo_metrics = neo_metrics,
-        config_types = config_types,
-        standard_importance = standard_importance
+    neoMetrics, totalImportance = processNEOMetrics(
+        configs, molNeo, configSelection, configurationTypes, standardImportance
     )
+    
+    logImportanceResults(standardImportance, configs, configurationTypes, neoMetrics)
+    
+    return buildImportanceResult(totalImportance, neoMetrics, 
+                               configurationTypes, standardImportance)
+end
+
+function isEmptyConfigurationSet(configs)
+    return isempty(configs)
+end
+
+function createEmptyImportanceResult()
+    return (
+        total_importance = 0.0,
+        neo_metrics = nothing,
+        config_types = Dict{String, Int}()
+    )
+end
+
+function calculateStandardImportance(configs)
+    weights = [get_weight(c) for c in configs]
+    totalWeight = sum(weights)
+    normalizedWeights = weights ./ max(totalWeight, 1.0)
+    return min(sum(normalizedWeights), 1.0)
+end
+
+function processNEOMetrics(configs, molNeo, configSelection, configTypes, standardImportance)
+    if shouldCalculateNEOMetrics(configSelection, configs)
+        neoMetrics = calculate_neo_importance_metrics(configs, molNeo, configTypes)
+        enhancementFactor = calculate_neo_enhancement(neoMetrics)
+        totalImportance = min(standardImportance * enhancementFactor, 1.0)
+        return neoMetrics, totalImportance
+    else
+        return nothing, standardImportance
+    end
+end
+
+function shouldCalculateNEOMetrics(configSelection, configs)
+    return configSelection.use_neo_importance && hasNuclearConfigs(configs)
+end
+
+function getConfigName(config)
+    return get_config_name(config)
+end
+
+function hasNuclearConfigs(configs)
+    return has_nuclear_configs(configs)
+end
+
+function logImportanceResults(standardImportance, configs, configTypes, neoMetrics)
+    @info "Importance analysis complete:" *
+          "\n  Standard importance: $(round(standardImportance, digits=3))" *
+          "\n  Total configurations: $(length(configs))" *
+          "\n  Configuration types: $(configTypes)"
+    
+    if neoMetrics !== nothing
+        logNEOMetrics(neoMetrics)
+    end
+end
+
+function logNEOMetrics(neoMetrics)
+    @info "NEO metrics:" *
+          "\n  Nuclear participation: $(round(neoMetrics.nuclear_participation * 100, digits=1))%" *
+          "\n  Coupling contribution: $(round(neoMetrics.coupling_contribution, digits=3))" *
+          "\n  Enhancement factor: $(round(neoMetrics.enhancement_factor, digits=3))"
+end
+
+function buildImportanceResult(totalImportance, neoMetrics, configTypes, standardImportance)
+    return (
+        total_importance = totalImportance,
+        neo_metrics = neoMetrics,
+        config_types = configTypes,
+        standard_importance = standardImportance
+    )
+end
+
+# Backward compatibility wrapper
+function calculate_importance_metrics(configs, molNeo, configSelection::ConfigSelection)
+    return calculateImportanceMetrics(configs, molNeo, configSelection)
 end
 
 # ======================== Configuration Type Analysis ========================
 
-function analyze_configuration_types(configs)
-    """
-    Analyze and categorize configuration types
-    """
-    type_counts = Dict{String, Int}(
+function analyzeConfigurationTypes(configs)
+    """Analyze and categorize configuration types"""
+    typeCounts = initializeConfigurationTypeCounts()
+    
+    for config in configs
+        configName = getConfigName(config)
+        configType = determineConfigurationType(configName)
+        typeCounts[configType] += 1
+    end
+    
+    return typeCounts
+end
+
+function initializeConfigurationTypeCounts()
+    return Dict{String, Int}(
         "reference" => 0,
         "single_elec" => 0,
         "double_elec" => 0,
@@ -79,28 +130,53 @@ function analyze_configuration_types(configs)
         "coupled" => 0,
         "other" => 0
     )
-    
-    for config in configs
-        name = get_config_name(config)
-        
-        if occursin("HF", name) || occursin("REF", name)
-            type_counts["reference"] += 1
-        elseif occursin("C(", name)
-            type_counts["coupled"] += 1
-        elseif occursin("S(", name) || occursin("E(", name)
-            type_counts["single_elec"] += 1
-        elseif occursin("D(", name)
-            type_counts["double_elec"] += 1
-        elseif match(r"N\d+\(\d+→\d+\)", name) !== nothing
-            type_counts["single_nuc"] += 1
-        elseif match(r"N\d+\(\d+\d+→\d+\d+\)", name) !== nothing
-            type_counts["double_nuc"] += 1
-        else
-            type_counts["other"] += 1
-        end
+end
+
+function determineConfigurationType(configName::String)
+    if isReferenceConfiguration(configName)
+        return "reference"
+    elseif isCoupledConfiguration(configName)
+        return "coupled"
+    elseif isSingleElectronicConfiguration(configName)
+        return "single_elec"
+    elseif isDoubleElectronicConfiguration(configName)
+        return "double_elec"
+    elseif isSingleNuclearConfiguration(configName)
+        return "single_nuc"
+    elseif isDoubleNuclearConfiguration(configName)
+        return "double_nuc"
+    else
+        return "other"
     end
-    
-    return type_counts
+end
+
+function isReferenceConfiguration(name::String)
+    return occursin("HF", name) || occursin("REF", name)
+end
+
+function isCoupledConfiguration(name::String)
+    return occursin("C(", name)
+end
+
+function isSingleElectronicConfiguration(name::String)
+    return occursin("S(", name) || occursin("E(", name)
+end
+
+function isDoubleElectronicConfiguration(name::String)
+    return occursin("D(", name)
+end
+
+function isSingleNuclearConfiguration(name::String)
+    return match(r"N\d+\(\d+→\d+\)", name) !== nothing
+end
+
+function isDoubleNuclearConfiguration(name::String)
+    return match(r"N\d+\(\d+\d+→\d+\d+\)", name) !== nothing
+end
+
+# Backward compatibility wrapper
+function analyze_configuration_types(configs)
+    return analyzeConfigurationTypes(configs)
 end
 
 # ======================== NEO-specific Importance ========================

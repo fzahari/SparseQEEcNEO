@@ -469,7 +469,7 @@ end
 function initialize_cneo_environment(molecule::Molecule, cneo_calculation::CNEOCalculation, neo_config::NEOConfig)
     # Setup PySCF
     pyscf_module, has_neo = setup_pyscf(neo_config)
-    validate_neo_availability(has_neo)
+    validateNeoAvailability(has_neo)
     
     # Build NEO molecule  
     neo_molecule = build_neo_molecule(molecule, pyscf_module)
@@ -485,7 +485,7 @@ function initialize_cneo_environment(molecule::Molecule, cneo_calculation::CNEOC
     return CNEOMeanFieldEnvironment(mean_field_object, neo_molecule, nuclear_origins, nuclear_components)
 end
 
-function validate_neo_availability(has_neo::Bool)
+function validateNeoAvailability(has_neo::Bool)
     if !has_neo
         throw(ArgumentError("NEO module not available in PySCF. Please install PySCF with NEO support."))
     end

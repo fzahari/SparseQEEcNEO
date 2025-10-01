@@ -15,6 +15,7 @@ using JSON
 
 # Include all submodules in correct order
 # IMPORTANT: Order matters due to dependencies
+include("constants.jl")  # Constants for Clean Code compliance
 include("types.jl")
 include("pyscf_interface.jl")
 include("epc_functionals.jl")
@@ -24,6 +25,7 @@ include("importance_analysis.jl")
 include("qee_methods.jl")
 include("hamiltonian_construction.jl")
 include("cneo_methods.jl")  # Constrained NEO methods - Clean Code implementation
+include("quantum_computing.jl")  # Quantum computing integration - Clean Code implementation
 
 # Import from submodules
 using .Types
@@ -35,6 +37,7 @@ using .ImportanceAnalysis
 using .QEEMethods
 using .HamiltonianConstruction
 using .CNEOMethods
+using .QuantumComputing
 
 # Make sure this function is imported
 import .NuclearMethods: apply_nuclear_orbital_truncation!
@@ -55,8 +58,11 @@ export export_hamiltonian_openfermion
 export CNEOCalculation, CNEOResults, CNEOMP2Results
 export run_cneo_hf, run_cneo_mp2, create_cneo_calculation
 export sparse_qee_with_cneo, cneo_to_qee_workflow
+# Export quantum computing functionality
+export exportToQuantumFormats, exportToOpenFermion, exportToQiskit, exportToCirq
+export createVQECircuit, estimateQuantumResources, validateQuantumExport, runQuantumDemo
 
-# Note: cNEO functionality available in advanced_examples/cneo/ directory
+# Note: cNEO functionality available in advanced_examples/ directory
 
 # ======================== Main Interface Function ========================
 
@@ -79,58 +85,57 @@ function sparse_qee_cneo(mol::Molecule;
                         config_sel::ConfigSelection = ConfigSelection(),
                         neo_config::NEOConfig = NEOConfig())
     
-    performance_timer = create_performance_timer()
+    performance_timer = createPerformanceTimer()
     
     try
         # Step 1: Initialize quantum chemistry environment
-        meanfield_result = initialize_quantum_environment(mol, calc, neo_config)
+        meanfield_result = initializeQuantumEnvironment(mol, calc, neo_config)
         
         # Step 2: Apply nuclear orbital truncation if specified
-        truncation_result = apply_orbital_truncation_if_needed(meanfield_result, config_sel)
+        truncation_result = applyOrbitalTruncationIfNeeded(meanfield_result, config_sel)
         
         # Step 3: Calculate correlation corrections if requested
-        correlation_result = calculate_correlation_corrections(
+        correlation_result = calculateCorrelationCorrections(
             meanfield_result, truncation_result, config_sel
         )
         
         # Step 4: Generate and select configurations
-        configuration_result = generate_and_select_configurations(
+        configuration_result = generateAndSelectConfigurations(
             meanfield_result, correlation_result, config_sel
         )
         
         # Step 5: Construct Hamiltonian matrix
-        hamiltonian_result = construct_hamiltonian_matrix(
+        hamiltonian_result = constructHamiltonianMatrix(
             meanfield_result, configuration_result, config_sel
         )
         
         # Step 6: Apply additional energy corrections
-        energy_corrections = calculate_energy_corrections(meanfield_result, calc)
+        energy_corrections = calculateEnergyCorrections(meanfield_result, calc)
         
         # Step 7: Assemble final results
-        final_results = assemble_calculation_results(
+        final_results = assembleCalculationResults(
             meanfield_result, correlation_result, configuration_result, 
             hamiltonian_result, energy_corrections, performance_timer
         )
         
-        print_results_summary(final_results, mol, calc, config_sel)
+        printResultsSummary(final_results, mol, calc, config_sel)
         return final_results
         
     catch error
-        handle_calculation_error(error, mol, calc)
+        handleCalculationError(error, mol, calc)
         rethrow(error)
     end
 end
 
 # ======================== Clean Code Helper Functions ========================
 
-# Constants for Clean Code compliance
+# Constants now imported from constants.jl
 const DEFAULT_ELECTRON_COUNT = 2
 const DEFAULT_ORBITAL_COUNT = 4
-const MEMORY_CONVERSION_FACTOR_MB = 1024^2
+const MEMORY_CONVERSION_FACTOR_MB = MEMORY_ALLOCATION_BUFFER  # Use from constants.jl
 const MP2_WEIGHT_ENHANCEMENT_FACTOR = 10.0
-const HAMILTONIAN_SPARSITY_THRESHOLD = 1e-12
-const IMPORTANCE_DISPLAY_PRECISION = 3
-const ENERGY_DISPLAY_PRECISION = 6
+const IMPORTANCE_DISPLAY_PRECISION = PERCENTAGE_FORMAT_PRECISION
+const ENERGY_DISPLAY_PRECISION = ENERGY_FORMAT_PRECISION
 
 """
     PerformanceTimer
@@ -142,17 +147,17 @@ struct PerformanceTimer
     initial_memory::Float64
 end
 
-function create_performance_timer()
+function createPerformanceTimer()
     return PerformanceTimer(
         time(), 
         Base.gc_live_bytes() / MEMORY_CONVERSION_FACTOR_MB
     )
 end
 
-function calculate_elapsed_metrics(timer::PerformanceTimer)
-    elapsed_time = time() - timer.start_time
-    memory_used = Base.gc_live_bytes() / MEMORY_CONVERSION_FACTOR_MB - timer.initial_memory
-    return elapsed_time, memory_used
+function calculateElapsedMetrics(timer::PerformanceTimer)
+    elapsedTime = time() - timer.start_time
+    memoryUsed = Base.gc_live_bytes() / MEMORY_CONVERSION_FACTOR_MB - timer.initial_memory
+    return elapsedTime, memoryUsed
 end
 
 """
@@ -210,10 +215,10 @@ end
 
 # ======================== Step 1: Initialize Quantum Environment ========================
 
-function initialize_quantum_environment(mol::Molecule, calc::NEOCalculation, neo_config::NEOConfig)
+function initializeQuantumEnvironment(mol::Molecule, calc::NEOCalculation, neo_config::NEOConfig)
     pyscf_module, has_neo = setup_pyscf(neo_config)
     
-    validate_neo_availability(has_neo)
+    validateNeoAvailability(has_neo)
     
     neo_molecule = build_neo_molecule(mol, pyscf_module)
     meanfield_object = run_neo_meanfield(neo_molecule, calc, pyscf_module)
@@ -221,7 +226,7 @@ function initialize_quantum_environment(mol::Molecule, calc::NEOCalculation, neo
     return MeanfieldResult(meanfield_object, neo_molecule, pyscf_module)
 end
 
-function validate_neo_availability(has_neo::Bool)
+function validateNeoAvailability(has_neo::Bool)
     if !has_neo
         throw(ArgumentError("NEO module not available in PySCF. Please install PySCF with NEO support."))
     end
@@ -229,8 +234,8 @@ end
 
 # ======================== Step 2: Orbital Truncation ========================
 
-function apply_orbital_truncation_if_needed(meanfield_result::MeanfieldResult, config_sel::ConfigSelection)
-    if should_apply_truncation(config_sel)
+function applyOrbitalTruncationIfNeeded(meanfield_result::MeanfieldResult, config_sel::ConfigSelection)
+    if shouldApplyTruncation(config_sel)
         was_truncated, truncation_info = apply_nuclear_orbital_truncation!(
             meanfield_result.meanfield_object, 
             meanfield_result.neo_molecule, 
@@ -242,30 +247,30 @@ function apply_orbital_truncation_if_needed(meanfield_result::MeanfieldResult, c
     end
 end
 
-function should_apply_truncation(config_sel::ConfigSelection)
+function shouldApplyTruncation(config_sel::ConfigSelection)
     return config_sel.max_nuc_orbs > 0
 end
 
 # ======================== Step 3: Correlation Corrections ========================
 
-function calculate_correlation_corrections(meanfield_result::MeanfieldResult, 
+function calculateCorrelationCorrections(meanfield_result::MeanfieldResult, 
                                          truncation_result::TruncationResult,
                                          config_sel::ConfigSelection)
-    if should_calculate_mp2_correlation(config_sel)
-        return attempt_mp2_calculation(meanfield_result, truncation_result, config_sel)
+    if shouldCalculateMP2Correlation(config_sel)
+        return attemptMP2Calculation(meanfield_result, truncation_result, config_sel)
     else
         return CorrelationResult(0.0, nothing)
     end
 end
 
-function should_calculate_mp2_correlation(config_sel::ConfigSelection)
+function shouldCalculateMP2Correlation(config_sel::ConfigSelection)
     return config_sel.method in ["mp2", "mp2_enhanced"]
 end
 
-function attempt_mp2_calculation(meanfield_result::MeanfieldResult,
+function attemptMP2Calculation(meanfield_result::MeanfieldResult,
                                 truncation_result::TruncationResult,
                                 config_sel::ConfigSelection)
-    if should_skip_mp2_due_to_truncation(truncation_result, config_sel)
+    if shouldSkipMP2DueToTruncation(truncation_result, config_sel)
         @info "Skipping NEO-MP2 due to orbital truncation"
         return CorrelationResult(0.0, nothing)
     end
@@ -281,16 +286,16 @@ function attempt_mp2_calculation(meanfield_result::MeanfieldResult,
         return CorrelationResult(correlation_energy, t2_amplitudes)
         
     catch error
-        handle_mp2_failure(error, truncation_result)
+        handleMP2Failure(error, truncation_result)
         return CorrelationResult(0.0, nothing)
     end
 end
 
-function should_skip_mp2_due_to_truncation(truncation_result::TruncationResult, config_sel::ConfigSelection)
+function shouldSkipMP2DueToTruncation(truncation_result::TruncationResult, config_sel::ConfigSelection)
     return truncation_result.was_truncated && !config_sel.force_mp2_with_truncation
 end
 
-function handle_mp2_failure(error::Exception, truncation_result::TruncationResult)
+function handleMP2Failure(error::Exception, truncation_result::TruncationResult)
     if truncation_result.was_truncated
         @warn "NEO-MP2 failed with truncated orbitals (expected): $error"
         @info "Continuing without MP2 correlation"
@@ -301,52 +306,72 @@ end
 
 # ======================== Step 4: Configuration Generation ========================
 
-function generate_and_select_configurations(meanfield_result::MeanfieldResult,
-                                          correlation_result::CorrelationResult,
-                                          config_sel::ConfigSelection)
-    initial_configurations = generate_configurations(
-        meanfield_result.meanfield_object,
-        meanfield_result.neo_molecule,
-        config_sel,
-        correlation_result.t2_amplitudes
-    )
-    
-    importance_data = calculate_importance_metrics(
-        initial_configurations, 
-        meanfield_result.neo_molecule, 
-        config_sel
-    )
-    
-    optimized_result = optimize_method_selection(
-        meanfield_result, correlation_result, initial_configurations, 
-        importance_data, config_sel
-    )
-    
-    selected_configurations, qubit_count = select_important_configurations(
-        optimized_result.configurations, optimized_result.config_selection
-    )
-    
-    return ConfigurationResult(
-        selected_configurations,
-        optimized_result.importance_data,
-        optimized_result.config_selection.method,
-        qubit_count
-    )
-end
-
 struct OptimizedConfigurationResult
     configurations::Vector
     importance_data::Any
     config_selection::ConfigSelection
 end
 
-function optimize_method_selection(meanfield_result::MeanfieldResult,
+function generateAndSelectConfigurations(meanfieldResult::MeanfieldResult,
+                                        correlationResult::CorrelationResult,
+                                        configSelection::ConfigSelection)
+    
+    initialConfigurations = performConfigurationGeneration(
+        meanfieldResult, correlationResult, configSelection
+    )
+    
+    importanceData = calculateConfigurationImportance(
+        initialConfigurations, meanfieldResult.neo_molecule, configSelection
+    )
+    
+    optimizedResult = optimizeMethodSelection(
+        meanfieldResult, correlationResult, initialConfigurations, 
+        importanceData, configSelection
+    )
+    
+    return createFinalConfigurationResult(optimizedResult)
+end
+
+function performConfigurationGeneration(meanfieldResult::MeanfieldResult,
+                                      correlationResult::CorrelationResult,
+                                      configSelection::ConfigSelection)
+    return generate_configurations(
+        meanfieldResult.meanfield_object,
+        meanfieldResult.neo_molecule,
+        configSelection,
+        correlationResult.t2_amplitudes
+    )
+end
+
+function calculateConfigurationImportance(configurations::Vector,
+                                        neoMolecule::Any,
+                                        configSelection::ConfigSelection)
+    return calculate_importance_metrics(
+        configurations, neoMolecule, configSelection
+    )
+end
+
+function createFinalConfigurationResult(optimizedResult::OptimizedConfigurationResult)
+    selectedConfigurations, qubitCount = select_important_configurations(
+        optimizedResult.configurations, optimizedResult.config_selection
+    )
+    
+    return ConfigurationResult(
+        selectedConfigurations,
+        optimizedResult.importance_data,
+        optimizedResult.config_selection.method,
+        qubitCount
+    )
+end
+
+
+function optimizeMethodSelection(meanfield_result::MeanfieldResult,
                                  correlation_result::CorrelationResult,
                                  configurations::Vector,
                                  importance_data::Any,
                                  config_sel::ConfigSelection)
-    if should_attempt_method_switching(config_sel, importance_data)
-        return attempt_method_switching(
+    if shouldAttemptMethodSwitching(config_sel, importance_data)
+        return attemptMethodSwitching(
             meanfield_result, correlation_result, configurations, 
             importance_data, config_sel
         )
@@ -355,12 +380,12 @@ function optimize_method_selection(meanfield_result::MeanfieldResult,
     end
 end
 
-function should_attempt_method_switching(config_sel::ConfigSelection, importance_data::Any)
+function shouldAttemptMethodSwitching(config_sel::ConfigSelection, importance_data::Any)
     return config_sel.auto_switch_method && 
            importance_data.total_importance < config_sel.importance_threshold_switch
 end
 
-function attempt_method_switching(meanfield_result::MeanfieldResult,
+function attemptMethodSwitching(meanfield_result::MeanfieldResult,
                                 correlation_result::CorrelationResult,
                                 original_configurations::Vector,
                                 original_importance::Any,
@@ -375,7 +400,7 @@ function attempt_method_switching(meanfield_result::MeanfieldResult,
             continue
         end
         
-        improved_result = try_alternative_method(
+        improved_result = tryAlternativeMethod(
             meanfield_result, correlation_result, alternative_method, original_config_sel
         )
         
@@ -389,7 +414,7 @@ function attempt_method_switching(meanfield_result::MeanfieldResult,
     return best_result
 end
 
-function try_alternative_method(meanfield_result::MeanfieldResult,
+function tryAlternativeMethod(meanfield_result::MeanfieldResult,
                               correlation_result::CorrelationResult,
                               method_name::String,
                               original_config_sel::ConfigSelection)
@@ -416,7 +441,7 @@ end
 
 # ======================== Step 5: Hamiltonian Construction ========================
 
-function construct_hamiltonian_matrix(meanfield_result::MeanfieldResult,
+function constructHamiltonianMatrix(meanfield_result::MeanfieldResult,
                                     configuration_result::ConfigurationResult,
                                     config_sel::ConfigSelection)
     hamiltonian_data, hamiltonian_matrix = construct_second_quantized_hamiltonian(
@@ -431,8 +456,8 @@ end
 
 # ======================== Step 6: Energy Corrections ========================
 
-function calculate_energy_corrections(meanfield_result::MeanfieldResult, calc::NEOCalculation)
-    if should_apply_epc_correction(calc)
+function calculateEnergyCorrections(meanfield_result::MeanfieldResult, calc::NEOCalculation)
+    if shouldApplyEPCCorrection(calc)
         return calculate_epc_energy(
             meanfield_result.meanfield_object, 
             meanfield_result.neo_molecule, 
@@ -443,54 +468,11 @@ function calculate_energy_corrections(meanfield_result::MeanfieldResult, calc::N
     end
 end
 
-function should_apply_epc_correction(calc::NEOCalculation)
+function shouldApplyEPCCorrection(calc::NEOCalculation)
     return calc.epc != "none" && calc.epc != ""
 end
 
 # ======================== Step 7: Results Assembly ========================
-
-function assemble_calculation_results(meanfield_result::MeanfieldResult,
-                                    correlation_result::CorrelationResult,
-                                    configuration_result::ConfigurationResult,
-                                    hamiltonian_result::HamiltonianResult,
-                                    epc_energy::Float64,
-                                    performance_timer::PerformanceTimer)
-    
-    elapsed_time, memory_used = calculate_elapsed_metrics(performance_timer)
-    
-    orbital_analysis = analyze_orbital_structure(
-        meanfield_result.meanfield_object, meanfield_result.neo_molecule
-    )
-    
-    savings_metrics = calculate_computational_savings(
-        configuration_result.selected_configurations,
-        configuration_result.qubit_count,
-        orbital_analysis.total_orbitals
-    )
-    
-    base_energy = extract_base_energy(meanfield_result.meanfield_object)
-    total_energy = base_energy + correlation_result.mp2_energy + epc_energy
-    
-    return NEOResults(
-        configuration_result.selected_configurations,
-        base_energy,
-        correlation_result.mp2_energy,
-        total_energy,
-        length(configuration_result.selected_configurations),
-        configuration_result.qubit_count,
-        configuration_result.importance_data.total_importance,
-        savings_metrics.determinant_savings,
-        savings_metrics.qubit_savings,
-        elapsed_time,
-        memory_used,
-        configuration_result.final_method_used,
-        orbital_analysis.orbitals_per_species,
-        configuration_result.importance_data.neo_metrics,
-        false, # orbital_truncation - will be updated by truncation logic
-        hamiltonian_result.hamiltonian_data,
-        hamiltonian_result.hamiltonian_matrix
-    )
-end
 
 struct OrbitalAnalysis
     total_orbitals::Int
@@ -498,16 +480,132 @@ struct OrbitalAnalysis
     orbitals_per_species::Vector{Int}
 end
 
-function analyze_orbital_structure(meanfield_object::Any, neo_molecule::Any)
-    if has_electronic_component(meanfield_object)
+struct ComputationalSavings
+    determinant_savings::Float64
+    qubit_savings::Int
+end
+
+function assembleCalculationResults(meanfieldResult::MeanfieldResult,
+                                   correlationResult::CorrelationResult,
+                                   configurationResult::ConfigurationResult,
+                                   hamiltonianResult::HamiltonianResult,
+                                   epcEnergy::Float64,
+                                   performanceTimer::PerformanceTimer)
+    
+    performanceData = extractPerformanceMetrics(performanceTimer)
+    analysisData = performOrbitalAnalysis(meanfieldResult)
+    energyData = calculateTotalEnergy(meanfieldResult, correlationResult, epcEnergy)
+    savingsData = computeSavingsMetrics(configurationResult, analysisData)
+    
+    return buildNEOResults(
+        configurationResult, analysisData, energyData, 
+        savingsData, performanceData, hamiltonianResult
+    )
+end
+
+function extractPerformanceMetrics(timer::PerformanceTimer)
+    elapsedTime, memoryUsed = calculateElapsedMetrics(timer)
+    return (elapsedTime, memoryUsed)
+end
+
+function performOrbitalAnalysis(meanfieldResult::MeanfieldResult)
+    return analyzeOrbitalStructure(
+        meanfieldResult.meanfield_object, 
+        meanfieldResult.neo_molecule
+    )
+end
+
+function calculateTotalEnergy(meanfieldResult::MeanfieldResult, 
+                            correlationResult::CorrelationResult, 
+                            epcEnergy::Float64)
+    baseEnergy = extractBaseEnergy(meanfieldResult.meanfield_object)
+    totalEnergy = baseEnergy + correlationResult.mp2_energy + epcEnergy
+    return (baseEnergy, totalEnergy)
+end
+
+function computeSavingsMetrics(configurationResult::ConfigurationResult, 
+                             orbitalAnalysis::OrbitalAnalysis)
+    return calculateComputationalSavings(
+        configurationResult.selected_configurations,
+        configurationResult.qubit_count,
+        orbitalAnalysis.total_orbitals
+    )
+end
+
+function buildNEOResults(configurationResult::ConfigurationResult,
+                       orbitalAnalysis::OrbitalAnalysis,
+                       energyData::Tuple{Float64, Float64},
+                       savingsData::ComputationalSavings,
+                       performanceData::Tuple{Float64, Float64},
+                       hamiltonianResult::HamiltonianResult)
+    
+    baseEnergy, totalEnergy = energyData
+    elapsedTime, memoryUsed = performanceData
+    mp2Correlation = calculateMP2Correlation(configurationResult, totalEnergy, baseEnergy)
+    
+    return createNEOResultsStruct(
+        configurationResult, orbitalAnalysis, baseEnergy, totalEnergy,
+        mp2Correlation, savingsData, elapsedTime, memoryUsed, hamiltonianResult
+    )
+end
+
+function calculateMP2Correlation(configurationResult::ConfigurationResult, 
+                               totalEnergy::Float64, baseEnergy::Float64)
+    return configurationResult.importance_data.total_importance > 0 ? 
+           totalEnergy - baseEnergy : 0.0
+end
+
+function createNEOResultsStruct(configurationResult::ConfigurationResult,
+                              orbitalAnalysis::OrbitalAnalysis,
+                              baseEnergy::Float64, totalEnergy::Float64,
+                              mp2Correlation::Float64,
+                              savingsData::ComputationalSavings,
+                              elapsedTime::Float64, memoryUsed::Float64,
+                              hamiltonianResult::HamiltonianResult)
+    
+    resultFields = assembleNEOResultFields(
+        configurationResult, orbitalAnalysis, baseEnergy, totalEnergy,
+        mp2Correlation, savingsData, elapsedTime, memoryUsed, hamiltonianResult
+    )
+    
+    return NEOResults(resultFields...)
+end
+
+function assembleNEOResultFields(configurationResult, orbitalAnalysis, 
+                               baseEnergy, totalEnergy, mp2Correlation,
+                               savingsData, elapsedTime, memoryUsed, hamiltonianResult)
+    return (
+        configurationResult.selected_configurations,
+        baseEnergy,
+        mp2Correlation,
+        totalEnergy,
+        length(configurationResult.selected_configurations),
+        configurationResult.qubit_count,
+        configurationResult.importance_data.total_importance,
+        savingsData.determinant_savings,
+        savingsData.qubit_savings,
+        elapsedTime,
+        memoryUsed,
+        configurationResult.final_method_used,
+        orbitalAnalysis.orbitals_per_species,
+        configurationResult.importance_data.neo_metrics,
+        false, # orbital_truncation - updated by truncation logic
+        hamiltonianResult.hamiltonian_data,
+        hamiltonianResult.hamiltonian_matrix
+    )
+end
+
+
+function analyzeOrbitalStructure(meanfield_object::Any, neo_molecule::Any)
+    if hasElectronicComponent(meanfield_object)
         electronic_component = meanfield_object.components["e"]
-        electron_count = extract_electron_count(electronic_component)
-        orbital_count = extract_orbital_count(electronic_component)
+        electron_count = extractElectronCount(electronic_component)
+        orbital_count = extractOrbitalCount(electronic_component)
         
         orbitals_per_species = [orbital_count]
         
-        if has_nuclear_components(neo_molecule, meanfield_object)
-            nuclear_orbital_count = extract_nuclear_orbital_count(meanfield_object)
+        if hasNuclearComponents(neo_molecule, meanfield_object)
+            nuclear_orbital_count = extractNuclearOrbitalCount(meanfield_object)
             orbitals_per_species = [orbital_count, nuclear_orbital_count]
         end
         
@@ -517,12 +615,12 @@ function analyze_orbital_structure(meanfield_object::Any, neo_molecule::Any)
     end
 end
 
-function has_electronic_component(meanfield_object::Any)
+function hasElectronicComponent(meanfield_object::Any)
     return pybuiltin("hasattr")(meanfield_object, "components") && 
            haskey(meanfield_object.components, "e")
 end
 
-function extract_electron_count(electronic_component::Any)
+function extractElectronCount(electronic_component::Any)
     if pybuiltin("hasattr")(electronic_component, "nelectron")
         return convert(Int, electronic_component.nelectron)
     elseif pybuiltin("hasattr")(electronic_component, "mo_occ")
@@ -533,7 +631,7 @@ function extract_electron_count(electronic_component::Any)
     end
 end
 
-function extract_orbital_count(electronic_component::Any)
+function extractOrbitalCount(electronic_component::Any)
     if pybuiltin("hasattr")(electronic_component, "mo_occ")
         return length(electronic_component.mo_occ)
     else
@@ -541,12 +639,12 @@ function extract_orbital_count(electronic_component::Any)
     end
 end
 
-function has_nuclear_components(neo_molecule::Any, meanfield_object::Any)
+function hasNuclearComponents(neo_molecule::Any, meanfield_object::Any)
     return pybuiltin("hasattr")(neo_molecule, "nuc_num") && neo_molecule.nuc_num > 0 &&
            pybuiltin("hasattr")(meanfield_object, "components") && haskey(meanfield_object.components, "n0")
 end
 
-function extract_nuclear_orbital_count(meanfield_object::Any)
+function extractNuclearOrbitalCount(meanfield_object::Any)
     nuclear_component = meanfield_object.components["n0"]
     if pybuiltin("hasattr")(nuclear_component, "mo_occ")
         return length(nuclear_component.mo_occ)
@@ -555,19 +653,15 @@ function extract_nuclear_orbital_count(meanfield_object::Any)
     end
 end
 
-struct ComputationalSavings
-    determinant_savings::Float64
-    qubit_savings::Int
-end
 
-function calculate_computational_savings(selected_configs::Vector, qubit_count::Int, total_orbitals::Int)
+function calculateComputationalSavings(selected_configs::Vector, qubit_count::Int, total_orbitals::Int)
     determinant_savings = 2^total_orbitals / max(length(selected_configs), 1)
     qubit_savings = total_orbitals - qubit_count
     
     return ComputationalSavings(determinant_savings, qubit_savings)
 end
 
-function extract_base_energy(meanfield_object::Any)
+function extractBaseEnergy(meanfield_object::Any)
     if pybuiltin("hasattr")(meanfield_object, "e_tot")
         return convert(Float64, meanfield_object.e_tot)
     else
@@ -577,7 +671,7 @@ end
 
 # ======================== Error Handling ========================
 
-function handle_calculation_error(error::Exception, mol::Molecule, calc::NEOCalculation)
+function handleCalculationError(error::Exception, mol::Molecule, calc::NEOCalculation)
     @error "Calculation failed for molecule with $(length(mol.quantum_nuc)) quantum nuclei"
     @error "Method: $(calc.xc), EPC: $(calc.epc)"
     @error "Error details: $error"
@@ -585,67 +679,67 @@ end
 
 # ======================== Results Summary ========================
 
-function print_results_summary(results::NEOResults, mol::Molecule, calc::NEOCalculation, 
+function printResultsSummary(results::NEOResults, mol::Molecule, calc::NEOCalculation, 
                               config_sel::ConfigSelection = ConfigSelection())
     
     println("\n" * "="^60)
     println("SPARSE QEE-CNEO CALCULATION RESULTS")
     println("="^60)
     
-    print_method_information(calc, results)
-    print_energy_information(results)
-    print_configuration_information(results, mol)
-    print_hamiltonian_information(results)
-    print_performance_information(results)
-    print_neo_specific_metrics(results)
+    printMethodInformation(calc, results)
+    printEnergyInformation(results)
+    printConfigurationInformation(results, mol)
+    printHamiltonianInformation(results)
+    printPerformanceInformation(results)
+    printNeoSpecificMetrics(results)
     
     println("="^60)
 end
 
-function print_method_information(calc::NEOCalculation, results::NEOResults)
+function printMethodInformation(calc::NEOCalculation, results::NEOResults)
     println("\nMethod Information:")
-    method_display = create_method_display_string(calc, results)
+    method_display = createMethodDisplayString(calc, results)
     println("  Method: $method_display")
     
-    if should_display_epc_functional(calc)
+    if shouldDisplayEPCFunctional(calc)
         println("  EPC functional: $(calc.epc)")
     end
 end
 
-function create_method_display_string(calc::NEOCalculation, results::NEOResults)
+function createMethodDisplayString(calc::NEOCalculation, results::NEOResults)
     base_method = calc.xc
     configuration_method = results.method_used == "mp2" ? "MP2" : results.method_used
     return "$base_method+$configuration_method"
 end
 
-function should_display_epc_functional(calc::NEOCalculation)
+function shouldDisplayEPCFunctional(calc::NEOCalculation)
     return calc.epc != "none" && !isempty(calc.epc)
 end
 
-function print_energy_information(results::NEOResults)
+function printEnergyInformation(results::NEOResults)
     println("\nEnergy Information:")
     println("  Base energy: $(round(results.energy, digits=ENERGY_DISPLAY_PRECISION)) Ha")
     
-    if has_mp2_correlation(results)
+    if hasMP2Correlation(results)
         println("  MP2 correlation: $(round(results.mp2_correlation, digits=ENERGY_DISPLAY_PRECISION)) Ha")
     end
     
     println("  Total energy: $(round(results.total_energy, digits=ENERGY_DISPLAY_PRECISION)) Ha")
 end
 
-function has_mp2_correlation(results::NEOResults)
+function hasMP2Correlation(results::NEOResults)
     return results.mp2_correlation != 0.0
 end
 
-function print_configuration_information(results::NEOResults, mol::Molecule)
+function printConfigurationInformation(results::NEOResults, mol::Molecule)
     println("\nConfiguration Information:")
     
-    electron_count = extract_electron_count_from_orbitals(results.orbitals_per_species)
+    electron_count = extractElectronCountFromOrbitals(results.orbitals_per_species)
     println("  Electrons: $electron_count")
     println("  Quantum nuclei: $(length(mol.quantum_nuc))")
     println("  Selected configurations: $(results.n_configs)")
     println("  Qubits required: $(results.n_qubits)")
-    println("  Captured importance: $(format_percentage(results.captured_importance))%")
+    println("  Captured importance: $(formatPercentage(results.captured_importance))%")
     println("  Computational savings:")
     println("    Determinant reduction: $(round(results.det_savings, digits=1))×")
     println("    Qubit reduction: $(results.qubit_savings)")
@@ -656,28 +750,28 @@ function print_configuration_information(results::NEOResults, mol::Molecule)
     end
 end
 
-function extract_electron_count_from_orbitals(orbitals_per_species::Vector{Int})
+function extractElectronCountFromOrbitals(orbitals_per_species::Vector{Int})
     # Estimate electron count from orbital count (rough approximation)
     return length(orbitals_per_species) > 0 ? orbitals_per_species[1] ÷ 2 : DEFAULT_ELECTRON_COUNT
 end
 
-function format_percentage(value::Float64)
+function formatPercentage(value::Float64)
     return round(value * 100, digits=1)
 end
 
-function print_hamiltonian_information(results::NEOResults)
-    if has_hamiltonian_matrix(results)
+function printHamiltonianInformation(results::NEOResults)
+    if hasHamiltonianMatrix(results)
         println("\nHamiltonian Information:")
-        print_hamiltonian_basic_properties(results.hamiltonian_matrix)
-        print_hamiltonian_analysis(results.hamiltonian_matrix)
+        printHamiltonianBasicProperties(results.hamiltonian_matrix)
+        printHamiltonianAnalysis(results.hamiltonian_matrix)
     end
 end
 
-function has_hamiltonian_matrix(results::NEOResults)
+function hasHamiltonianMatrix(results::NEOResults)
     return results.hamiltonian_matrix !== nothing
 end
 
-function print_hamiltonian_basic_properties(hamiltonian_matrix::Any)
+function printHamiltonianBasicProperties(hamiltonian_matrix::Any)
     matrix_size = size(hamiltonian_matrix)
     is_hermitian = ishermitian(hamiltonian_matrix)
     hermitian_status = is_hermitian ? "✓" : "✗"
@@ -686,49 +780,49 @@ function print_hamiltonian_basic_properties(hamiltonian_matrix::Any)
     println("  Hermitian: $hermitian_status")
 end
 
-function print_hamiltonian_analysis(hamiltonian_matrix::Any)
-    if is_matrix_analyzable(hamiltonian_matrix)
-        properties = analyze_hamiltonian_properties(hamiltonian_matrix)
+function printHamiltonianAnalysis(hamiltonian_matrix::Any)
+    if isMatrixAnalyzable(hamiltonian_matrix)
+        properties = analyzeHamiltonianProperties(hamiltonian_matrix)
         println("  Ground state energy: $(round(properties.ground_state_energy, digits=ENERGY_DISPLAY_PRECISION)) Ha")
-        println("  Matrix sparsity: $(format_percentage(properties.sparsity))%")
+        println("  Matrix sparsity: $(formatPercentage(properties.sparsity))%")
     end
 end
 
-function is_matrix_analyzable(hamiltonian_matrix::Any)
+function isMatrixAnalyzable(hamiltonian_matrix::Any)
     return size(hamiltonian_matrix, 1) > 0
 end
 
-function print_performance_information(results::NEOResults)
+function printPerformanceInformation(results::NEOResults)
     println("\nPerformance Metrics:")
     println("  Computation time: $(round(results.computation_time, digits=IMPORTANCE_DISPLAY_PRECISION)) seconds")
     println("  Memory usage: $(round(results.memory_used, digits=1)) MB")
 end
 
-function print_neo_specific_metrics(results::NEOResults)
-    if has_neo_metrics(results)
+function printNeoSpecificMetrics(results::NEOResults)
+    if hasNeoMetrics(results)
         println("\nNEO-Specific Metrics:")
-        print_neo_importance_metrics(results.neo_metrics)
-        print_neo_participation_metrics(results.neo_metrics)
+        printNeoImportanceMetrics(results.neo_metrics)
+        printNeoParticipationMetrics(results.neo_metrics)
     end
 end
 
-function has_neo_metrics(results::NEOResults)
+function hasNeoMetrics(results::NEOResults)
     return results.neo_metrics !== nothing
 end
 
-function print_neo_importance_metrics(neo_metrics::Any)
-    if has_standard_importance_field(neo_metrics)
+function printNeoImportanceMetrics(neo_metrics::Any)
+    if hasStandardImportanceField(neo_metrics)
         standard_importance = round(neo_metrics.standard_importance, digits=IMPORTANCE_DISPLAY_PRECISION)
         println("  Standard importance: $standard_importance")
     end
 end
 
-function has_standard_importance_field(neo_metrics::Any)
+function hasStandardImportanceField(neo_metrics::Any)
     return hasfield(typeof(neo_metrics), :standard_importance)
 end
 
-function print_neo_participation_metrics(neo_metrics::Any)
-    nuclear_participation = format_percentage(neo_metrics.nuclear_participation)
+function printNeoParticipationMetrics(neo_metrics::Any)
+    nuclear_participation = formatPercentage(neo_metrics.nuclear_participation)
     coupling_contribution = round(neo_metrics.coupling_contribution, digits=IMPORTANCE_DISPLAY_PRECISION)
     
     println("  Nuclear participation: $nuclear_participation%")
@@ -751,23 +845,23 @@ struct HamiltonianProperties
 end
 
 """
-    analyze_hamiltonian_properties(hamiltonian_matrix::Matrix)
+    analyzeHamiltonianProperties(hamiltonian_matrix::Matrix)
 
 Analyze key properties of the Hamiltonian matrix.
 
 # Returns
 - `HamiltonianProperties`: Struct containing analysis results
 """
-function analyze_hamiltonian_properties(hamiltonian_matrix::Matrix)
-    if is_empty_matrix(hamiltonian_matrix)
-        return create_empty_hamiltonian_properties()
+function analyzeHamiltonianProperties(hamiltonian_matrix::Matrix)
+    if isEmptyMatrix(hamiltonian_matrix)
+        return createEmptyHamiltonianProperties()
     end
     
-    eigenvalues = calculate_hamiltonian_eigenvalues(hamiltonian_matrix)
-    ground_state_energy = extract_ground_state_energy(eigenvalues)
-    energy_gap = calculate_energy_gap(eigenvalues)
-    matrix_sparsity = calculate_matrix_sparsity(hamiltonian_matrix)
-    condition_number = calculate_condition_number(hamiltonian_matrix)
+    eigenvalues = calculateHamiltonianEigenvalues(hamiltonian_matrix)
+    ground_state_energy = extractGroundStateEnergy(eigenvalues)
+    energy_gap = calculateEnergyGap(eigenvalues)
+    matrix_sparsity = calculateMatrixSparsity(hamiltonian_matrix)
+    condition_number = calculateConditionNumber(hamiltonian_matrix)
     
     return HamiltonianProperties(
         ground_state_energy,
@@ -778,11 +872,11 @@ function analyze_hamiltonian_properties(hamiltonian_matrix::Matrix)
     )
 end
 
-function is_empty_matrix(hamiltonian_matrix::Matrix)
+function isEmptyMatrix(hamiltonian_matrix::Matrix)
     return size(hamiltonian_matrix, 1) == 0
 end
 
-function create_empty_hamiltonian_properties()
+function createEmptyHamiltonianProperties()
     return HamiltonianProperties(
         0.0,  # ground_state_energy
         0.0,  # energy_gap
@@ -792,7 +886,7 @@ function create_empty_hamiltonian_properties()
     )
 end
 
-function calculate_hamiltonian_eigenvalues(hamiltonian_matrix::Matrix)
+function calculateHamiltonianEigenvalues(hamiltonian_matrix::Matrix)
     return try
         eigenvals_hermitian = eigvals(Hermitian(hamiltonian_matrix))
         sort!(eigenvals_hermitian)
@@ -804,21 +898,21 @@ function calculate_hamiltonian_eigenvalues(hamiltonian_matrix::Matrix)
     end
 end
 
-function extract_ground_state_energy(eigenvalues::Vector{Float64})
+function extractGroundStateEnergy(eigenvalues::Vector{Float64})
     return length(eigenvalues) > 0 ? eigenvalues[1] : 0.0
 end
 
-function calculate_energy_gap(eigenvalues::Vector{Float64})
+function calculateEnergyGap(eigenvalues::Vector{Float64})
     return length(eigenvalues) > 1 ? eigenvalues[2] - eigenvalues[1] : 0.0
 end
 
-function calculate_matrix_sparsity(hamiltonian_matrix::Matrix)
+function calculateMatrixSparsity(hamiltonian_matrix::Matrix)
     zero_elements_count = count(abs.(hamiltonian_matrix) .< HAMILTONIAN_SPARSITY_THRESHOLD)
     total_elements = length(hamiltonian_matrix)
     return zero_elements_count / total_elements
 end
 
-function calculate_condition_number(hamiltonian_matrix::Matrix)
+function calculateConditionNumber(hamiltonian_matrix::Matrix)
     return try
         cond(hamiltonian_matrix)
     catch
@@ -829,24 +923,24 @@ end
 # ======================== Test Suite ========================
 
 """
-    run_test_suite(config::NEOConfig; run_modular_tests=true)
+    runTestSuite(config::NEOConfig; run_modular_tests=true)
 
 Run comprehensive test suite for the Sparse QEE-cNEO implementation.
 """
-function run_test_suite(config::NEOConfig = NEOConfig(); run_modular_tests::Bool = true)
-    display_test_suite_header()
+function runTestSuite(config::NEOConfig = NEOConfig(); run_modular_tests::Bool = true)
+    displayTestSuiteHeader()
     
-    if !check_pyscf_availability(config)
+    if !checkPysctAvailability(config)
         return Dict("demo" => "completed")
     end
     
-    test_results = execute_test_cases(config, run_modular_tests)
-    display_test_summary(test_results)
+    test_results = executeTestCases(config, run_modular_tests)
+    displayTestSummary(test_results)
     
     return test_results
 end
 
-function display_test_suite_header()
+function displayTestSuiteHeader()
     """Display test suite header with version information."""
     println("\n" * "="^60)
     println("Enhanced cNEO Sparse QEE Tests (v6.0)")
@@ -854,37 +948,37 @@ function display_test_suite_header()
     println("="^60 * "\n")
 end
 
-function check_pyscf_availability(config::NEOConfig)
+function checkPysctAvailability(config::NEOConfig)
     """Check PySCF availability and run demo mode if needed."""
     pyscf, has_neo = setup_pyscf(config)
     
     if !has_neo
         println("Running in demo mode without NEO calculations...")
-        run_demo_mode()
+        runDemoMode()
         return false
     end
     
     return true
 end
 
-function execute_test_cases(config::NEOConfig, run_modular_tests::Bool)
+function executeTestCases(config::NEOConfig, run_modular_tests::Bool)
     """Execute all test cases and collect results."""
     test_results = Dict{String, Any}()
     
-    test_results["H2"] = run_h2_test(config)
-    test_results["Water"] = run_water_test(config)
-    merge!(test_results, run_method_comparison_test(config))
+    test_results["H2"] = runH2Test(config)
+    test_results["Water"] = runWaterTest(config)
+    merge!(test_results, runMethodComparisonTest(config))
     
     if run_modular_tests
         println("\nTest 4: Modular component tests")
         println("-" * 40)
-        test_results["modular"] = run_modular_component_tests(config)
+        test_results["modular"] = runModularComponentTests(config)
     end
     
     return test_results
 end
 
-function run_h2_test(config::NEOConfig)
+function runH2Test(config::NEOConfig)
     """Run H2 molecule test with quantum proton."""
     println("\nTest 1: H2 with quantum proton")
     println("-" * 40)
@@ -906,7 +1000,7 @@ function run_h2_test(config::NEOConfig)
     end
 end
 
-function run_water_test(config::NEOConfig)
+function runWaterTest(config::NEOConfig)
     """Run water molecule test with quantum proton."""
     println("\nTest 2: Water with quantum proton")
     println("-" * 40)
@@ -927,7 +1021,7 @@ function run_water_test(config::NEOConfig)
     end
 end
 
-function run_method_comparison_test(config::NEOConfig)
+function runMethodComparisonTest(config::NEOConfig)
     """Run method comparison test for HCN molecule."""
     println("\nTest 3: Method comparison for HCN")
     println("-" * 40)
@@ -938,13 +1032,13 @@ function run_method_comparison_test(config::NEOConfig)
     results = Dict{String, Any}()
     
     for method in ["mp2", "neo_cneo", "hybrid_final"]
-        results["HCN_$method"] = test_single_method(mol_hcn, method, config)
+        results["HCN_$method"] = testSingleMethod(mol_hcn, method, config)
     end
     
     return results
 end
 
-function test_single_method(molecule::Molecule, method::String, config::NEOConfig)
+function testSingleMethod(molecule::Molecule, method::String, config::NEOConfig)
     """Test a single configuration method."""
     println("\n  Testing method: $method")
     config_sel = ConfigSelection(method=method, max_configs=50)
@@ -959,7 +1053,7 @@ function test_single_method(molecule::Molecule, method::String, config::NEOConfi
     end
 end
 
-function display_test_summary(test_results::Dict{String, Any})
+function displayTestSummary(test_results::Dict{String, Any})
     """Display test suite summary with pass/fail counts."""
     println("\n" * "="^60)
     println("Test Summary:")
@@ -974,22 +1068,22 @@ end
 # ======================== Modular Component Tests ========================
 
 """
-    run_modular_component_tests(config::NEOConfig)
+    runModularComponentTests(config::NEOConfig)
 
 Run tests for individual components in isolation.
 """
-function run_modular_component_tests(config::NEOConfig)
+function runModularComponentTests(config::NEOConfig)
     results = Dict{String, Any}()
     
-    results["electronic_only"] = test_electronic_component_only(config)
-    results["nuclear_methods"] = test_nuclear_methods(config)
-    merge!(results, test_epc_functionals(config))
-    results["compression"] = test_configuration_compression(config)
+    results["electronic_only"] = testElectronicComponentOnly(config)
+    results["nuclear_methods"] = testNuclearMethods(config)
+    merge!(results, testEPCFunctionals(config))
+    results["compression"] = testConfigurationCompression(config)
     
     return results
 end
 
-function test_electronic_component_only(config::NEOConfig)
+function testElectronicComponentOnly(config::NEOConfig)
     """Test electronic-only calculations without quantum nuclei."""
     println("\n  a) Testing electronic component only...")
     
@@ -1005,7 +1099,7 @@ function test_electronic_component_only(config::NEOConfig)
     end
 end
 
-function test_nuclear_methods(config::NEOConfig)
+function testNuclearMethods(config::NEOConfig)
     """Test nuclear method calculations with quantum nuclei."""
     println("\n  b) Testing nuclear methods...")
     
@@ -1026,7 +1120,7 @@ function test_nuclear_methods(config::NEOConfig)
     end
 end
 
-function test_epc_functionals(config::NEOConfig)
+function testEPCFunctionals(config::NEOConfig)
     """Test all available EPC functionals."""
     println("\n  c) Testing EPC functionals...")
     
@@ -1034,13 +1128,13 @@ function test_epc_functionals(config::NEOConfig)
     mol_h2 = Molecule("H 0 0 0; H 0 0 0.74", "sto-3g", quantum_nuc=[0])
     
     for epc in ["17-1", "17-2", "18-1", "18-2"]
-        results["epc_$epc"] = test_single_epc_functional(mol_h2, epc, config)
+        results["epc_$epc"] = testSingleEPCFunctional(mol_h2, epc, config)
     end
     
     return results
 end
 
-function test_single_epc_functional(molecule::Molecule, epc::String, config::NEOConfig)
+function testSingleEPCFunctional(molecule::Molecule, epc::String, config::NEOConfig)
     """Test a single EPC functional."""
     calc = NEOCalculation(xc="B3LYP", epc=epc)
     config_sel = ConfigSelection(method="mp2", max_configs=10)
@@ -1055,7 +1149,7 @@ function test_single_epc_functional(molecule::Molecule, epc::String, config::NEO
     end
 end
 
-function test_configuration_compression(config::NEOConfig)
+function testConfigurationCompression(config::NEOConfig)
     """Test configuration compression functionality."""
     println("\n  d) Testing configuration compression...")
     
@@ -1079,7 +1173,7 @@ end
 
 # ======================== Demo Mode ========================
 
-function run_demo_mode()
+function runDemoMode()
     println("\n" * "="^60)
     println("Running cNEO Demo Mode")
     println("="^60 * "\n")
@@ -1210,10 +1304,10 @@ function cneo_to_qee_workflow(cneo_results::CNEOResults,
     optimized_positions = cneo_results.actual_nuclear_positions
     
     # Create updated molecule with cNEO-optimized nuclear positions
-    updated_mol = update_molecule_with_cneo_positions(mol, optimized_positions)
+    updated_mol = updateMoleculeWithCNEOPositions(mol, optimized_positions)
     
     # Create NEO calculation incorporating cNEO energy contributions
-    neo_calc = create_neo_calculation_from_cneo(cneo_results)
+    neo_calc = createNeoCalculationFromCNEO(cneo_results)
     
     @info "Running QEE workflow with cNEO-optimized nuclear positions"
     
@@ -1226,7 +1320,7 @@ function cneo_to_qee_workflow(cneo_results::CNEOResults,
     )
     
     # Add cNEO information to QEE results for traceability
-    enhanced_results = enhance_qee_results_with_cneo_info(qee_results, cneo_results)
+    enhanced_results = enhanceQEEResultsWithCNEOInfo(qee_results, cneo_results)
     
     @info "QEE workflow completed with cNEO-optimized geometry"
     
@@ -1235,7 +1329,7 @@ end
 
 # ======================== Helper Functions for cNEO-QEE Integration ========================
 
-function update_molecule_with_cneo_positions(mol::Molecule, optimized_positions::Vector{Vector{Float64}})
+function updateMoleculeWithCNEOPositions(mol::Molecule, optimized_positions::Vector{Vector{Float64}})
     """Update molecular geometry with cNEO-optimized nuclear positions."""
     
     # For now, return original molecule (geometry update requires more complex implementation)
@@ -1245,7 +1339,7 @@ function update_molecule_with_cneo_positions(mol::Molecule, optimized_positions:
     return mol
 end
 
-function create_neo_calculation_from_cneo(cneo_results::CNEOResults)
+function createNeoCalculationFromCNEO(cneo_results::CNEOResults)
     """Create NEO calculation incorporating cNEO energy contributions."""
     
     # Create NEO calculation that accounts for cNEO constraint effects
@@ -1256,7 +1350,7 @@ function create_neo_calculation_from_cneo(cneo_results::CNEOResults)
     return neo_calc
 end
 
-function enhance_qee_results_with_cneo_info(qee_results::NEOResults, cneo_results::CNEOResults)
+function enhanceQEEResultsWithCNEOInfo(qee_results::NEOResults, cneo_results::CNEOResults)
     """Add cNEO information to QEE results for complete traceability."""
     
     @info "QEE results enhanced with cNEO constraint information"

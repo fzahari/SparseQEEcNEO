@@ -17,48 +17,65 @@ export calculate_epc_energy, get_electron_density, get_proton_density
 # ======================== Main EPC Energy Function ========================
 
 function calculate_epc_energy(mf, mol_neo, epc_type::String)
-    """
-    Calculate electron-proton correlation energy using specified functional
+    """Calculate electron-proton correlation energy using specified functional"""
     
-    Available functionals:
-    - "17-1": epc17 optimized for densities
-    - "17-2": epc17 optimized for energies  
-    - "18-1": epc18 optimized for densities
-    - "18-2": epc18 optimized for energies
-    """
-    if epc_type == "none" || !haskey(EPC_PARAMS, epc_type)
+    if !isValidEPCType(epc_type)
         return 0.0
     end
     
-    # Get functional parameters
-    params = EPC_PARAMS[epc_type]
-    a, b, c = params["a"], params["b"], params["c"]
+    functionalParams = extractEPCParameters(epc_type)
+    electronDensity, protonDensity = extractDensities(mf, mol_neo)
     
-    @info "Calculating EPC energy with functional: $epc_type"
-    
-    # Get electron and proton densities
-    rho_e = get_electron_density(mf)
-    rho_p = get_proton_density(mf, mol_neo)
-    
-    # Check if densities are valid
-    if length(rho_e) == 0 || length(rho_p) == 0
+    if !areDensitiesValid(electronDensity, protonDensity)
         @warn "Invalid densities for EPC calculation"
         return 0.0
     end
     
-    # Calculate EPC energy based on functional type
-    if epc_type in ["17-1", "17-2"]
-        epc_energy = calculate_epc17_energy(rho_e, rho_p, a, b, c)
-    elseif epc_type in ["18-1", "18-2"]
-        epc_energy = calculate_epc18_energy(rho_e, rho_p, a, b, c)
+    epcEnergy = computeEPCEnergy(electronDensity, protonDensity, epc_type, functionalParams)
+    
+    @info "EPC energy contribution: $epcEnergy Ha"
+    return epcEnergy
+end
+
+function isValidEPCType(epcType::String)
+    return epcType != "none" && haskey(EPC_PARAMS, epcType)
+end
+
+function extractEPCParameters(epcType::String)
+    @info "Calculating EPC energy with functional: $epcType"
+    params = EPC_PARAMS[epcType]
+    return params["a"], params["b"], params["c"]
+end
+
+function extractDensities(mf, molNeo)
+    electronDensity = get_electron_density(mf)
+    protonDensity = get_proton_density(mf, molNeo)
+    return electronDensity, protonDensity
+end
+
+function areDensitiesValid(electronDensity, protonDensity)
+    return length(electronDensity) > 0 && length(protonDensity) > 0
+end
+
+function computeEPCEnergy(electronDensity, protonDensity, epcType::String, params)
+    a, b, c = params
+    
+    if isEPC17Type(epcType)
+        return calculate_epc17_energy(electronDensity, protonDensity, a, b, c)
+    elseif isEPC18Type(epcType)
+        return calculate_epc18_energy(electronDensity, protonDensity, a, b, c)
     else
-        @warn "Unknown EPC functional: $epc_type"
+        @warn "Unknown EPC functional: $epcType"
         return 0.0
     end
-    
-    @info "EPC energy contribution: $epc_energy Ha"
-    
-    return epc_energy
+end
+
+function isEPC17Type(epcType::String)
+    return epcType in ["17-1", "17-2"]
+end
+
+function isEPC18Type(epcType::String)
+    return epcType in ["18-1", "18-2"]
 end
 
 # ======================== EPC17 Functional ========================
@@ -247,7 +264,7 @@ end
 
 # ======================== Testing Functions ========================
 
-function test_epc_functionals()
+function testEPCFunctionals()
     """
     Test EPC functional implementations with simple densities
     """

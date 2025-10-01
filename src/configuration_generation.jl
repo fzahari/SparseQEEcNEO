@@ -123,14 +123,14 @@ function generate_configurations_mp2(meanfield_result, neo_molecule, config_sele
 end
 
 function extract_electronic_component(meanfield_result)
-    if !has_electronic_component(meanfield_result)
+    if !hasElectronicComponent(meanfield_result)
         @warn "No electronic component found"
         return nothing
     end
     return meanfield_result.components["e"]
 end
 
-function has_electronic_component(meanfield_result)
+function hasElectronicComponent(meanfield_result)
     return pybuiltin("hasattr")(meanfield_result, "components") && 
            haskey(meanfield_result.components, "e")
 end
@@ -848,39 +848,59 @@ end
 # ======================== Helper Functions ========================
 
 function create_reference_config(mf, mol_neo, name="HF")
-    """
-    Create reference configuration with all components
-    """
+    """Create reference configuration with all components"""
     occupations = Dict{String, Vector{Int16}}()
     
-    # Electronic occupation
-    if pybuiltin("hasattr")(mf, "components") && haskey(mf.components, "e")
-        mf_elec = mf.components["e"]
-        if pybuiltin("hasattr")(mf_elec, "mo_occ")
-            mo_occ = collect(mf_elec.mo_occ)
-            # Convert to integers (0 or 1)
-            occ_int = [occ > 0.5 ? Int16(1) : Int16(0) for occ in mo_occ]
-            occupations["e"] = occ_int
-        end
-    end
-    
-    # Nuclear occupations
-    if pybuiltin("hasattr")(mol_neo, "nuc_num") && mol_neo.nuc_num > 0
-        for i in 0:(mol_neo.nuc_num-1)
-            nuc_key = "n$i"
-            if haskey(mf.components, nuc_key)
-                mf_nuc = mf.components[nuc_key]
-                if pybuiltin("hasattr")(mf_nuc, "mo_occ")
-                    mo_occ = collect(mf_nuc.mo_occ)
-                    # Convert to integers
-                    occ_int = [occ > 0.5 ? Int16(1) : Int16(0) for occ in mo_occ]
-                    occupations[nuc_key] = occ_int
-                end
-            end
-        end
-    end
+    addElectronicOccupation!(occupations, mf)
+    addNuclearOccupations!(occupations, mf, mol_neo)
     
     return Configuration(name, occupations, 1.0)
+end
+
+function addElectronicOccupation!(occupations, mf)
+    if hasConfigurableElectronicComponent(mf)
+        electronicComponent = mf.components["e"]
+        if hasMolecularOrbitals(electronicComponent)
+            occupationVector = extractOccupationVector(electronicComponent)
+            occupations["e"] = occupationVector
+        end
+    end
+end
+
+function addNuclearOccupations!(occupations, mf, molNeo)
+    if hasQuantumNuclei(molNeo)
+        for nuclearIndex in 0:(molNeo.nuc_num-1)
+            addSingleNuclearOccupation!(occupations, mf, nuclearIndex)
+        end
+    end
+end
+
+function hasConfigurableElectronicComponent(mf)
+    return pybuiltin("hasattr")(mf, "components") && haskey(mf.components, "e")
+end
+
+function hasMolecularOrbitals(component)
+    return pybuiltin("hasattr")(component, "mo_occ")
+end
+
+function extractOccupationVector(component)
+    molecularOccupations = collect(component.mo_occ)
+    return [occ > 0.5 ? Int16(1) : Int16(0) for occ in molecularOccupations]
+end
+
+function hasQuantumNuclei(molNeo)
+    return pybuiltin("hasattr")(molNeo, "nuc_num") && molNeo.nuc_num > 0
+end
+
+function addSingleNuclearOccupation!(occupations, mf, nuclearIndex)
+    nuclearKey = "n$nuclearIndex"
+    if haskey(mf.components, nuclearKey)
+        nuclearComponent = mf.components[nuclearKey]
+        if hasMolecularOrbitals(nuclearComponent)
+            occupationVector = extractOccupationVector(nuclearComponent)
+            occupations[nuclearKey] = occupationVector
+        end
+    end
 end
 
 function compress_configurations(configs::Vector{Configuration})
