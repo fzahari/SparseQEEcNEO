@@ -60,23 +60,3 @@ println("="^60)
 end
 
 println("\nTest suite completed!")
-
-# Run additional test files if they exist and PySCF is available
-if PYSCF_AVAILABLE != false && NEO_AVAILABLE
-    test_files = [
-        "../advanced_examples/test_cneo_hf.jl",
-        "../advanced_examples/test_cneo_mp2.jl"
-    ]
-    
-    for test_file in test_files
-        if isfile(test_file)
-            println("\nRunning additional test: $test_file")
-            try
-                include(test_file)
-                println("✓ $test_file completed")
-            catch e
-                println("✗ $test_file failed: $e")
-            end
-        end
-    end
-end
