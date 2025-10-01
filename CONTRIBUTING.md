@@ -43,7 +43,7 @@ julia> using Pkg; Pkg.instantiate()
 source setup_env.sh
 
 # Verify installation
-julia tools/check_dependencies.jl
+julia scripts/check_dependencies.jl
 ```
 
 ## Development Workflow
@@ -242,13 +242,13 @@ All pull requests require:
 
 ```bash
 # Check dependencies
-julia tools/check_dependencies.jl
+julia scripts/check_dependencies.jl
 
 # Run benchmarks
-julia tools/benchmark_suite.jl
+julia scripts/benchmark_suite.jl
 
 # Analyze code quality
-julia scripts/analyze_code_quality.jl
+julia scripts/analyze_clean_code.jl
 ```
 
 ### Debugging
@@ -261,7 +261,7 @@ julia scripts/analyze_code_quality.jl
 
 - **Issues**: Use GitHub Issues for bugs and feature requests
 - **Discussions**: Use GitHub Discussions for questions
-- **Documentation**: Check the `docs/` directory first
+- **Documentation**: Check the README.md and WARP.md files first
 
 ## Recognition
 

@@ -51,7 +51,7 @@
 
 4. **Verify setup:**
    ```bash
-   julia tools/check_dependencies.jl
+   julia scripts/check_dependencies.jl
    ```
 
 ## Quick Example
@@ -202,7 +202,7 @@ julia examples/cneo_qee_integration.jl  # Complete cNEO-QEE workflow
 julia test/runtests.jl
 
 # Run benchmarks
-julia tools/benchmark_suite.jl
+julia scripts/benchmark_suite.jl
 ```
 
 ## Theory
