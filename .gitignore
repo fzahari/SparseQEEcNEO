@@ -25,3 +25,9 @@ __pycache__/
 *.jl.*.cov
 *.jl.mem
 Manifest.toml
+
+# Development configuration files
+[A-Z]*.md
+![A-Z]*README*.md
+![A-Z]*CONTRIB*.md
+!*compliance*.md
