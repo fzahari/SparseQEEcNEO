@@ -36,7 +36,6 @@ function show_directory_structure()
         ("LICENSE", "MIT License"),
         ("CITATION.bib", "Citation information"),
         ("CONTRIBUTING.md", "Development guidelines"),
-        ("WARP.md", "WARP terminal integration guide"),
         ("setup_env.sh", "Environment setup script")
     ]
     
