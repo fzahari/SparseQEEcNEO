@@ -6,6 +6,10 @@
 # Ignore all .h5 files everywhere
 *.h5
 
+# Ignore demo hamiltonian output files
+demo_hamiltonian.*
+**/demo_hamiltonian.*
+
 # System files
 .DS_Store
 *.swp
