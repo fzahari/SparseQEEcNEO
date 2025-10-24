@@ -345,6 +345,8 @@ Jackson J. Hayes (jhayes1@iastate.edu)
 
 ## Acknowledgments
 
+This material is based upon work supported by the National Science Foundation under Grant No. OSI-2435255.
+
 Based on the Richerme protocol for trapped-ion quantum gate synthesis. Implements techniques from:
 - Richerme group (Indiana University)
 - Kyprianidis et al. (University of Innsbruck)
