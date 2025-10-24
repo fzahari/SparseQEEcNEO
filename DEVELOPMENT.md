@@ -1,6 +1,6 @@
-# DEVELOPMENT.md
+# Development Guide
 
-This file provides guidance to AI Assistant (automated tools) when working with code in this repository.
+This file provides comprehensive development guidelines, coding standards, and technical documentation for contributors.
 
 ## Project Overview
 
