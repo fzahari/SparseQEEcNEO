@@ -18,8 +18,8 @@ def read_requirements():
 setup(
     name="richerme-quantum-hardware",
     version="1.0.0",
-    author="Federico Zahariev",
-    author_email="fzahari@iastate.edu",
+    author="Federico Zahariev, Jackson J. Hayes",
+    author_email="fzahari@iastate.edu, jhayes1@iastate.edu",
     description="Python library for synthesizing quantum gates on trapped-ion analog hardware",
     long_description=read_readme(),
     long_description_content_type="text/markdown",

@@ -338,9 +338,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 
 MIT License (see LICENSE file)
 
-## Author
+## Authors
 
-Federico Zahariev
+Federico Zahariev (fzahari@iastate.edu)
+Jackson J. Hayes (jhayes1@iastate.edu)
 
 ## Acknowledgments
 
